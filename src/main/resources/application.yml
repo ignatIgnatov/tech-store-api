@@ -1,0 +1,110 @@
+
+spring:
+    application:
+        name: tech-store-api
+
+    # Database Configuration
+    datasource:
+        url: jdbc:postgresql://postgres:5432/techstore
+        username: techstore_user
+        password: techstore_password
+        driver-class-name: org.postgresql.Driver
+
+    # JPA/Hibernate Configuration
+    jpa:
+        hibernate:
+            ddl-auto: update # Use 'update' in production / 'create-drop in dev'
+        show-sql: false
+        properties:
+            hibernate:
+                dialect: org.hibernate.dialect.PostgreSQLDialect
+                format_sql: true
+                use_sql_comments: true
+                default_batch_fetch_size: 20
+
+    # Connection Pool Configuration
+    hikari:
+        maximum-pool-size: 20
+        minimum-idle: 5
+        idle-timeout: 600000
+        pool-name: TechStoreHikariCP
+        max-lifetime: 1800000
+        connection-timeout: 30000
+
+    # Jackson Configuration
+    jackson:
+        serialization:
+            fail-on-empty-beans: false
+            write-dates-as-timestamps: false
+        deserialization:
+            fail-on-unknown-properties: false
+        time-zone: UTC
+
+    # Multipart Configuration (for file uploads)
+    servlet:
+        multipart:
+            max-file-size: 10MB
+            max-request-size: 50MB
+
+    # Profile Configuration
+    profiles:
+        active: production
+
+# Server Configuration
+server:
+    port: 8080
+    servlet:
+        context-path: /
+
+# FIXED LOGGING CONFIGURATION
+logging:
+    level:
+        com.techstore: DEBUG
+        org.springframework.security: INFO
+        org.hibernate.SQL: DEBUG
+        org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+        root: INFO
+    pattern:
+        console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+
+# Application Specific Configuration
+app:
+    # JWT Configuration
+    jwt:
+        secret: ${JWT_SECRET:techStoreSecretKeyThatShouldBeLongAndSecure123456789}
+        expiration: 86400000 # 24 hours in milliseconds
+        refresh-expiration: 604800000 # 7 days in milliseconds
+
+    # File Upload Configuration
+    upload:
+        directory: ${UPLOAD_DIR:./uploads}
+        max-file-size: 10485760 # 10MB
+        allowed-extensions: jpg,jpeg,png,gif,webp
+
+    # Admin Configuration
+    admin:
+        default-username: admin
+        default-password: ${ADMIN_PASSWORD:admin123}
+        default-email: admin@techstore.com
+
+    # Pagination Configuration
+    pagination:
+        default-size: 20
+        max-size: 100
+
+# Management/Actuator Configuration
+management:
+    endpoints:
+        web:
+            exposure:
+                include: health,info,metrics
+    endpoint:
+        health:
+            show-details: when-authorized
+
+# OpenAPI/Swagger Configuration
+springdoc:
+    api-docs:
+        path: /v3/api-docs
+    swagger-ui:
+        path: /swagger-ui.html

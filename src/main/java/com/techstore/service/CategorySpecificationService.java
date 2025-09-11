@@ -68,7 +68,7 @@ public class CategorySpecificationService {
 
         return CategoryFilterDTO.builder()
                 .categoryId(categoryId)
-                .categoryName(category.getName())
+                .categoryName(category.getNameEn())
                 .filters(filters)
                 .build();
     }

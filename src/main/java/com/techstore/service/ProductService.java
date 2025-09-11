@@ -445,7 +445,7 @@ public class ProductService {
                 .active(product.getActive())
                 .featured(product.getFeatured())
                 .imageUrl(product.getImageUrl())
-                .categoryName(product.getCategory().getName())
+                .categoryName(product.getCategory().getNameEn())
                 .brandName(product.getBrand().getName())
                 .inStock(product.isInStock())
                 .onSale(product.isOnSale())
@@ -455,7 +455,7 @@ public class ProductService {
     private CategorySummaryDTO convertToCategorySummary(Category category) {
         return CategorySummaryDTO.builder()
                 .id(category.getId())
-                .name(category.getName())
+                .name(category.getNameEn())
                 .slug(category.getSlug())
                 .active(category.getActive())
                 .build();

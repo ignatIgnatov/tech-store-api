@@ -1,6 +1,7 @@
 package com.techstore.repository;
 
 import com.techstore.entity.Product;
+import com.techstore.enums.ProductStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -15,23 +16,29 @@ import java.util.Optional;
 @Repository
 public interface ProductRepository extends JpaRepository<Product, Long> {
 
+    Optional<Product> findByExternalId(Long externalId);
+
     // Find by SKU
     Optional<Product> findBySku(String sku);
 
     // Check if SKU exists (for validation)
     boolean existsBySku(String sku);
+
     boolean existsBySkuAndIdNot(String sku, Long id);
 
     // Find active products
     Page<Product> findByActiveTrue(Pageable pageable);
-    List<Product> findByActiveTrueOrderByNameAsc();
+
+    List<Product> findByActiveTrueOrderByNameEnAsc();
 
     // Find featured products
     Page<Product> findByActiveTrueAndFeaturedTrue(Pageable pageable);
+
     List<Product> findByActiveTrueAndFeaturedTrueOrderByCreatedAtDesc();
 
     // Find by category
     Page<Product> findByActiveTrueAndCategoryId(Long categoryId, Pageable pageable);
+
     Page<Product> findByActiveTrueAndCategoryIdIn(List<Long> categoryIds, Pageable pageable);
 
     // Find by brand
@@ -46,7 +53,7 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     // Search products by name or description
     @Query("SELECT p FROM Product p WHERE p.active = true AND " +
-            "(LOWER(p.name) LIKE LOWER(CONCAT('%', :query, '%')) OR " +
+            "(LOWER(p.nameEn) LIKE LOWER(CONCAT('%', :query, '%')) OR " +
             "LOWER(p.description) LIKE LOWER(CONCAT('%', :query, '%')) OR " +
             "LOWER(p.sku) LIKE LOWER(CONCAT('%', :query, '%')))")
     Page<Product> searchProducts(@Param("query") String query, Pageable pageable);
@@ -66,7 +73,7 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
             "AND (:maxPrice IS NULL OR p.discountedPrice <= :maxPrice) " +
             "AND (:inStock IS NULL OR (:inStock = true AND p.stockQuantity > 0) OR (:inStock = false)) " +
             "AND (:onSale IS NULL OR (:onSale = true AND p.discount IS NOT NULL AND p.discount != 0) OR (:onSale = false)) " +
-            "AND (:query IS NULL OR LOWER(p.name) LIKE LOWER(CONCAT('%', :query, '%')) " +
+            "AND (:query IS NULL OR LOWER(p.nameEn) LIKE LOWER(CONCAT('%', :query, '%')) " +
             "    OR LOWER(p.description) LIKE LOWER(CONCAT('%', :query, '%')) " +
             "    OR LOWER(p.sku) LIKE LOWER(CONCAT('%', :query, '%')))")
     Page<Product> findProductsWithFilters(@Param("categoryId") Long categoryId,
@@ -119,4 +126,15 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     // Get products that need restock
     @Query("SELECT p FROM Product p WHERE p.active = true AND p.stockQuantity = 0")
     List<Product> findOutOfStockProducts();
+
+    @Query("SELECT MIN(p.finalPrice) FROM Product p WHERE p.show = true AND p.status != 'NOT_AVAILABLE' AND p.finalPrice IS NOT NULL")
+    Optional<BigDecimal> findMinPrice();
+
+    @Query("SELECT MAX(p.finalPrice) FROM Product p WHERE p.show = true AND p.status != 'NOT_AVAILABLE' AND p.finalPrice IS NOT NULL")
+    Optional<BigDecimal> findMaxPrice();
+
+    List<Product> findByStatusAndShowTrue(ProductStatus status);
+
+    @Query("SELECT COUNT(p) FROM Product p WHERE p.show = true AND p.status != 'NOT_AVAILABLE'")
+    Long countAvailableProducts();
 }

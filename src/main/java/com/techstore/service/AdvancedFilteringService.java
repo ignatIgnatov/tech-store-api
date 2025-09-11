@@ -53,7 +53,7 @@ public class AdvancedFilteringService {
 
     private List<Product> buildFilteredProductQuery(AdvancedFilterRequestDTO filterRequest) {
         // Start with base query
-        Set<Product> candidates = new HashSet<>(productRepository.findByActiveTrueOrderByNameAsc());
+        Set<Product> candidates = new HashSet<>(productRepository.findByActiveTrueOrderByNameEnAsc());
 
         // Apply category filter
         if (filterRequest.getCategoryId() != null) {
@@ -178,7 +178,7 @@ public class AdvancedFilteringService {
                 .active(product.getActive())
                 .featured(product.getFeatured())
                 .imageUrl(product.getImageUrl())
-                .categoryName(product.getCategory().getName())
+                .categoryName(product.getCategory().getNameEn())
                 .brandName(product.getBrand().getName())
                 .inStock(product.isInStock())
                 .onSale(product.isOnSale())

@@ -14,6 +14,12 @@ import java.util.Optional;
 @Repository
 public interface CategoryRepository extends JpaRepository<Category, Long> {
 
+    @Query("SELECT DISTINCT c FROM Category c " +
+            "JOIN c.productCategories pc " +
+            "JOIN pc.product p " +
+            "WHERE p.show = true AND p.status != 'NOT_AVAILABLE'")
+    List<Category> findCategoriesWithAvailableProducts();
+
     // Find by slug
     Optional<Category> findBySlug(String slug);
 
@@ -23,15 +29,15 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
     boolean existsBySlugAndIdNot(String slug, Long id);
 
     // Find active categories
-    List<Category> findByActiveTrueOrderBySortOrderAscNameAsc();
+    List<Category> findByActiveTrueOrderBySortOrderAscNameEnAsc();
 
     Page<Category> findByActiveTrue(Pageable pageable);
 
     // Find parent categories (top-level)
-    List<Category> findByActiveTrueAndParentIsNullOrderBySortOrderAscNameAsc();
+    List<Category> findByActiveTrueAndParentIsNullOrderBySortOrderAscNameEnAsc();
 
     // Find child categories
-    List<Category> findByActiveTrueAndParentIdOrderBySortOrderAscNameAsc(Long parentId);
+    List<Category> findByActiveTrueAndParentIdOrderBySortOrderAscNameEnAsc(Long parentId);
 
     // Find categories with products
     @Query("SELECT DISTINCT c FROM Category c WHERE c.active = true AND " +
@@ -40,12 +46,12 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
 
     // Search categories
     @Query("SELECT c FROM Category c WHERE c.active = true AND " +
-            "LOWER(c.name) LIKE LOWER(CONCAT('%', :query, '%'))")
+            "LOWER(c.nameEn) LIKE LOWER(CONCAT('%', :query, '%'))")
     List<Category> searchCategories(@Param("query") String query);
 
     // Get category hierarchy
     @Query("SELECT c FROM Category c WHERE c.active = true ORDER BY " +
             "CASE WHEN c.parent IS NULL THEN c.sortOrder ELSE c.parent.sortOrder END, " +
-            "c.parent.id, c.sortOrder, c.name")
+            "c.parent.id, c.sortOrder, c.nameEn")
     List<Category> findCategoryHierarchy();
 }

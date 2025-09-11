@@ -142,7 +142,7 @@ public class EnhancedSearchService {
                 .active(product.getActive())
                 .featured(product.getFeatured())
                 .imageUrl(product.getImageUrl())
-                .categoryName(product.getCategory().getName())
+                .categoryName(product.getCategory().getNameEn())
                 .brandName(product.getBrand().getName())
                 .inStock(product.isInStock())
                 .onSale(product.isOnSale())

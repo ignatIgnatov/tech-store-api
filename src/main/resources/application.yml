@@ -17,10 +17,15 @@ spring:
         show-sql: false
         properties:
             hibernate:
-                dialect: org.hibernate.dialect.PostgreSQLDialect
                 format_sql: true
                 use_sql_comments: true
                 default_batch_fetch_size: 20
+                search:
+                    backend:
+                        type: lucene
+                        directory:
+                            root: /tmp/lucene/indexes
+
 
     # Connection Pool Configuration
     hikari:
@@ -92,6 +97,12 @@ app:
         default-size: 20
         max-size: 100
 
+    # Application specific configurations
+    sync:
+        enabled: true
+        cron: "0 0 2 * * ?" # Every day at 2 AM
+        batch-size: 100
+
 # Management/Actuator Configuration
 management:
     endpoints:
@@ -108,5 +119,13 @@ springdoc:
         path: /v3/api-docs
     swagger-ui:
         path: /swagger-ui.html
+
+vali:
+    api:
+        base-url: https://www.vali.bg/api/v1
+        token: v8GPrGyODgy6Em8VwcYTXB6WJvjYG7qAgYVSmNyMQGWdgT4lVCGAh1a1tR5K
+        timeout: 30000
+        retry-attempts: 3
+        retry-delay: 1000
 
 

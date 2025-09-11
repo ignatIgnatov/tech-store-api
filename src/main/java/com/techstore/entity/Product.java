@@ -1,12 +1,17 @@
 package com.techstore.entity;
 
+import com.techstore.enums.ProductStatus;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import org.hibernate.search.mapper.pojo.mapping.definition.annotation.FullTextField;
+import org.hibernate.search.mapper.pojo.mapping.definition.annotation.IndexedEmbedded;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Entity
 @Table(name = "products")
@@ -17,6 +22,56 @@ public class Product extends BaseAuditEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(name = "external_id", unique = true, nullable = false)
+    private Long externalId;
+
+    @Column(name = "workflow_id")
+    private Long workflowId;
+
+    @FullTextField
+    @Column(name = "reference_number", unique = true, nullable = false)
+    private String referenceNumber;
+
+    @FullTextField
+    @Column(name = "model")
+    private String model;
+
+    @Column(name = "barcode")
+    private String barcode;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "manufacturer_id", nullable = false)
+    @IndexedEmbedded
+    private Manufacturer manufacturer;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false)
+    private ProductStatus status;
+
+    @Column(name = "price_client", precision = 10, scale = 2)
+    private BigDecimal priceClient;
+
+    @Column(name = "price_partner", precision = 10, scale = 2)
+    private BigDecimal pricePartner;
+
+    @Column(name = "price_promo", precision = 10, scale = 2)
+    private BigDecimal pricePromo;
+
+    @Column(name = "price_client_promo", precision = 10, scale = 2)
+    private BigDecimal priceClientPromo;
+
+    @Column(name = "markup_percentage", precision = 5, scale = 2)
+    private BigDecimal markupPercentage = BigDecimal.valueOf(20.0);
+
+    @Column(name = "final_price", precision = 10, scale = 2)
+    private BigDecimal finalPrice;
+
+    @Column(name = "show_flag", nullable = false)
+    private Boolean show = true;
+
+    @Column(name = "warranty_months")
+    private Integer warrantyMonths;
 
     @Column(nullable = false, length = 500)
     private String name;
@@ -73,16 +128,48 @@ public class Product extends BaseAuditEntity {
     @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<ProductSpecification> specifications = new ArrayList<>();
 
-    @PrePersist
-    @PreUpdate
-    public void calculateDiscountedPrice() {
-        if (discount != null && price != null) {
-            this.discountedPrice = price.add(discount);
-            if (this.discountedPrice.compareTo(BigDecimal.ZERO) < 0) {
-                this.discountedPrice = BigDecimal.ZERO;
-            }
-        } else {
-            this.discountedPrice = price;
+    @FullTextField
+    @Column(name = "name_bg", columnDefinition = "TEXT")
+    private String nameBg;
+
+    @FullTextField
+    @Column(name = "name_en", columnDefinition = "TEXT")
+    private String nameEn;
+
+    @FullTextField
+    @Column(name = "description_bg", columnDefinition = "TEXT")
+    private String descriptionBg;
+
+    @FullTextField
+    @Column(name = "description_en", columnDefinition = "TEXT")
+    private String descriptionEn;
+
+    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private Set<ProductCategory> productCategories = new HashSet<>();
+
+    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private Set<ProductParameter> productParameters = new HashSet<>();
+
+    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private Set<ProductImage> productImages = new HashSet<>();
+
+    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private Set<ProductDocument> productDocuments = new HashSet<>();
+
+    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private Set<ProductFlag> productFlags = new HashSet<>();
+
+    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private Set<UserFavorite> favorites = new HashSet<>();
+
+    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private Set<CartItem> cartItems = new HashSet<>();
+
+    // Method to calculate final price with markup
+    public void calculateFinalPrice() {
+        if (priceClient != null && markupPercentage != null) {
+            BigDecimal markup = priceClient.multiply(markupPercentage.divide(BigDecimal.valueOf(100)));
+            this.finalPrice = priceClient.add(markup);
         }
     }
 

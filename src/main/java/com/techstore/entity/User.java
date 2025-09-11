@@ -10,6 +10,8 @@ import org.springframework.security.core.userdetails.UserDetails;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
 
 @Entity
 @Table(name = "users")
@@ -47,6 +49,15 @@ public class User extends BaseAuditEntity implements UserDetails {
     private Boolean emailVerified = false;
 
     private LocalDateTime lastLoginAt;
+
+    @Column(name = "preferred_language")
+    private String preferredLanguage = "bg";
+
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private Set<UserFavorite> favorites = new HashSet<>();
+
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private Set<CartItem> cartItems = new HashSet<>();
 
     public enum Role {
         USER, ADMIN, SUPER_ADMIN

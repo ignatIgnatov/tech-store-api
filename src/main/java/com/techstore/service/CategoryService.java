@@ -1,14 +1,8 @@
 package com.techstore.service;
 
 import com.techstore.dto.*;
-import com.techstore.entity.Product;
-import com.techstore.entity.ProductSpecification;
 import com.techstore.entity.Category;
-import com.techstore.entity.Brand;
-import com.techstore.repository.ProductRepository;
-import com.techstore.repository.ProductSpecificationRepository;
 import com.techstore.repository.CategoryRepository;
-import com.techstore.repository.BrandRepository;
 import com.techstore.exception.ResourceNotFoundException;
 import com.techstore.exception.DuplicateResourceException;
 
@@ -19,7 +13,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -33,7 +26,7 @@ public class CategoryService {
 
     @Transactional(readOnly = true)
     public List<CategoryResponseDTO> getAllCategories() {
-        return categoryRepository.findByActiveTrueOrderBySortOrderAscNameAsc()
+        return categoryRepository.findByActiveTrueOrderBySortOrderAscNameEnAsc()
                 .stream()
                 .map(this::convertToResponseDTO)
                 .collect(Collectors.toList());
@@ -61,7 +54,7 @@ public class CategoryService {
 
     @Transactional(readOnly = true)
     public List<CategoryTreeDTO> getCategoryTree() {
-        List<Category> parentCategories = categoryRepository.findByActiveTrueAndParentIsNullOrderBySortOrderAscNameAsc();
+        List<Category> parentCategories = categoryRepository.findByActiveTrueAndParentIsNullOrderBySortOrderAscNameEnAsc();
         return parentCategories.stream()
                 .map(this::convertToTreeDTO)
                 .collect(Collectors.toList());
@@ -112,7 +105,7 @@ public class CategoryService {
 
     private Category convertToEntity(CategoryRequestDTO dto) {
         Category category = new Category();
-        category.setName(dto.getName());
+        category.setNameEn(dto.getName());
         category.setSlug(dto.getSlug());
         category.setDescription(dto.getDescription());
         category.setImageUrl(dto.getImageUrl());
@@ -129,7 +122,7 @@ public class CategoryService {
     }
 
     private void updateCategoryFromDTO(Category category, CategoryRequestDTO dto) {
-        category.setName(dto.getName());
+        category.setNameEn(dto.getName());
         category.setSlug(dto.getSlug());
         category.setDescription(dto.getDescription());
         category.setImageUrl(dto.getImageUrl());
@@ -148,7 +141,7 @@ public class CategoryService {
     private CategoryResponseDTO convertToResponseDTO(Category category) {
         return CategoryResponseDTO.builder()
                 .id(category.getId())
-                .name(category.getName())
+                .name(category.getNameEn())
                 .slug(category.getSlug())
                 .description(category.getDescription())
                 .imageUrl(category.getImageUrl())
@@ -171,7 +164,7 @@ public class CategoryService {
     private CategorySummaryDTO convertToSummaryDTO(Category category) {
         return CategorySummaryDTO.builder()
                 .id(category.getId())
-                .name(category.getName())
+                .name(category.getNameEn())
                 .slug(category.getSlug())
                 .active(category.getActive())
                 .build();
@@ -180,7 +173,7 @@ public class CategoryService {
     private CategoryTreeDTO convertToTreeDTO(Category category) {
         return CategoryTreeDTO.builder()
                 .id(category.getId())
-                .name(category.getName())
+                .name(category.getNameEn())
                 .slug(category.getSlug())
                 .active(category.getActive())
                 .sortOrder(category.getSortOrder())

@@ -3,10 +3,13 @@ package com.techstore.entity;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import org.hibernate.search.mapper.pojo.mapping.definition.annotation.FullTextField;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Entity
@@ -19,8 +22,16 @@ public class Category extends BaseAuditEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, length = 200)
-    private String name;
+    @Column(name = "external_id", unique = true, nullable = false)
+    private Long externalId;
+
+    @FullTextField
+    @Column(name = "name_en", nullable = false, length = 200)
+    private String nameEn;
+
+    @FullTextField
+    @Column(name = "name_bg")
+    private String nameBg;
 
     @Column(unique = true, nullable = false, length = 200)
     private String slug;
@@ -30,6 +41,9 @@ public class Category extends BaseAuditEntity {
 
     @Column(length = 1000)
     private String imageUrl;
+
+    @Column(name = "show_flag", nullable = false)
+    private Boolean show = true;
 
     @Column(nullable = false)
     private Boolean active = true;
@@ -46,6 +60,9 @@ public class Category extends BaseAuditEntity {
 
     @OneToMany(mappedBy = "category", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<Product> products = new ArrayList<>();
+
+    @OneToMany(mappedBy = "category", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private Set<ProductCategory> productCategories = new HashSet<>();
 
     @OneToMany(mappedBy = "category", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<CategorySpecificationTemplate> specificationTemplates = new ArrayList<>();
@@ -74,8 +91,8 @@ public class Category extends BaseAuditEntity {
 
     public String getFullPath() {
         if (parent == null) {
-            return name;
+            return nameEn;
         }
-        return parent.getFullPath() + " / " + name;
+        return parent.getFullPath() + " / " + nameEn;
     }
 }

@@ -5,12 +5,14 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Entity
 @Table(name = "categories")
 @Data
-@EqualsAndHashCode(callSuper = false, exclude = {"parent", "children", "products"})
+@EqualsAndHashCode(callSuper = false, exclude = {"parent", "children", "products", "specificationTemplates"})
 public class Category extends BaseAuditEntity {
 
     @Id
@@ -44,6 +46,23 @@ public class Category extends BaseAuditEntity {
 
     @OneToMany(mappedBy = "category", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<Product> products = new ArrayList<>();
+
+    @OneToMany(mappedBy = "category", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private List<CategorySpecificationTemplate> specificationTemplates = new ArrayList<>();
+
+    public List<CategorySpecificationTemplate> getRequiredSpecifications() {
+        return specificationTemplates.stream()
+                .filter(CategorySpecificationTemplate::getRequired)
+                .sorted(Comparator.comparing(CategorySpecificationTemplate::getSortOrder))
+                .collect(Collectors.toList());
+    }
+
+    public List<CategorySpecificationTemplate> getFilterableSpecifications() {
+        return specificationTemplates.stream()
+                .filter(CategorySpecificationTemplate::getFilterable)
+                .sorted(Comparator.comparing(CategorySpecificationTemplate::getSortOrder))
+                .collect(Collectors.toList());
+    }
 
     public boolean isParentCategory() {
         return parent == null;

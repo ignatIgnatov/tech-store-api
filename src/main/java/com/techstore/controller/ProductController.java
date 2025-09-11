@@ -1,6 +1,8 @@
 package com.techstore.controller;
 
 import com.techstore.dto.*;
+import com.techstore.service.AdvancedFilteringService;
+import com.techstore.service.CategorySpecificationService;
 import com.techstore.service.ProductService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,8 +27,36 @@ import java.util.List;
 public class ProductController {
 
     private final ProductService productService;
+    private final AdvancedFilteringService filteringService;
+    private final CategorySpecificationService specificationService;
 
-    // ===== PUBLIC ENDPOINTS =====
+    @PostMapping("/filter/advanced")
+    public ResponseEntity<Page<ProductSummaryDTO>> filterProductsAdvanced(
+            @RequestBody AdvancedFilterRequestDTO filterRequest,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "name") String sortBy,
+            @RequestParam(defaultValue = "asc") String sortDir) {
+
+        Sort sort = sortDir.equalsIgnoreCase("desc") ?
+                Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
+        Pageable pageable = PageRequest.of(page, size, sort);
+
+        Page<ProductSummaryDTO> products = filteringService.filterProductsAdvanced(filterRequest, pageable);
+        return ResponseEntity.ok(products);
+    }
+
+    @GetMapping("/category/{categoryId}/filter-options")
+    public ResponseEntity<CategoryFilterDTO> getCategoryFilterOptions(@PathVariable Long categoryId) {
+        CategoryFilterDTO filterOptions = specificationService.getCategoryFilters(categoryId);
+        return ResponseEntity.ok(filterOptions);
+    }
+
+    @GetMapping("/compare")
+    public ResponseEntity<List<ProductComparisonDTO>> compareProducts(@RequestParam List<Long> productIds) {
+        // Implementation for product comparison
+        return ResponseEntity.ok(List.of());
+    }
 
     @GetMapping
     public ResponseEntity<Page<ProductSummaryDTO>> getAllProducts(

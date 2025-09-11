@@ -1,10 +1,15 @@
 package com.techstore.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.techstore.dto.*;
+import com.techstore.entity.CategorySpecificationTemplate;
 import com.techstore.entity.Product;
 import com.techstore.entity.ProductSpecification;
 import com.techstore.entity.Category;
 import com.techstore.entity.Brand;
+import com.techstore.exception.BusinessLogicException;
+import com.techstore.repository.CategorySpecificationTemplateRepository;
 import com.techstore.repository.ProductRepository;
 import com.techstore.repository.ProductSpecificationRepository;
 import com.techstore.repository.CategoryRepository;
@@ -20,7 +25,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -33,6 +44,8 @@ public class ProductService {
     private final ProductSpecificationRepository specificationRepository;
     private final CategoryRepository categoryRepository;
     private final BrandRepository brandRepository;
+    private final CategorySpecificationTemplateRepository templateRepository;
+    private final ObjectMapper objectMapper;
 
     // ===== READ OPERATIONS =====
 
@@ -112,17 +125,25 @@ public class ProductService {
     // ===== WRITE OPERATIONS =====
 
     public ProductResponseDTO createProduct(ProductRequestDTO requestDTO) {
-        log.info("Creating new product with SKU: {}", requestDTO.getSku());
+        log.info("Creating product with specification validation: {}", requestDTO.getSku());
 
         // Validate SKU uniqueness
         if (productRepository.existsBySku(requestDTO.getSku())) {
             throw new DuplicateResourceException("Product with SKU '" + requestDTO.getSku() + "' already exists");
         }
 
+        // Get category templates for validation
+        List<CategorySpecificationTemplate> requiredTemplates =
+                templateRepository.findByCategoryIdAndRequiredTrueOrderBySortOrderAsc(requestDTO.getCategoryId());
+
+        // Validate required specifications are provided
+        validateRequiredSpecifications(requestDTO.getSpecifications(), requiredTemplates);
+
+        // Create product
         Product product = convertToEntity(requestDTO);
         product = productRepository.save(product);
 
-        // Save specifications
+        // Save validated specifications using the corrected method ✅
         if (requestDTO.getSpecifications() != null) {
             saveProductSpecifications(product, requestDTO.getSpecifications());
         }
@@ -130,6 +151,45 @@ public class ProductService {
         log.info("Product created successfully with id: {}", product.getId());
         return convertToResponseDTO(product);
     }
+
+    private void validateRequiredSpecifications(List<ProductSpecificationRequestDTO> specs,
+                                                List<CategorySpecificationTemplate> requiredTemplates) {
+        if (specs == null) specs = Collections.emptyList();
+
+        Set<String> providedSpecs = specs.stream()
+                .map(ProductSpecificationRequestDTO::getSpecName)
+                .collect(Collectors.toSet());
+
+        List<String> missingSpecs = requiredTemplates.stream()
+                .map(CategorySpecificationTemplate::getSpecName)
+                .filter(specName -> !providedSpecs.contains(specName))
+                .collect(Collectors.toList());
+
+        if (!missingSpecs.isEmpty()) {
+            throw new BusinessLogicException("Missing required specifications: " + String.join(", ", missingSpecs));
+        }
+    }
+
+    //without specifications validations
+//    public ProductResponseDTO createProduct(ProductRequestDTO requestDTO) {
+//        log.info("Creating new product with SKU: {}", requestDTO.getSku());
+//
+//        // Validate SKU uniqueness
+//        if (productRepository.existsBySku(requestDTO.getSku())) {
+//            throw new DuplicateResourceException("Product with SKU '" + requestDTO.getSku() + "' already exists");
+//        }
+//
+//        Product product = convertToEntity(requestDTO);
+//        product = productRepository.save(product);
+//
+//        // Save specifications
+//        if (requestDTO.getSpecifications() != null) {
+//            saveProductSpecifications(product, requestDTO.getSpecifications());
+//        }
+//
+//        log.info("Product created successfully with id: {}", product.getId());
+//        return convertToResponseDTO(product);
+//    }
 
     public ProductResponseDTO updateProduct(Long id, ProductRequestDTO requestDTO) {
         log.info("Updating product with id: {}", id);
@@ -181,21 +241,118 @@ public class ProductService {
 
     // ===== UTILITY METHODS =====
 
+
+// ===== CORRECTED PRODUCT SPECIFICATION SAVE METHOD =====
+
+// Replace the old method in ProductService with this corrected version:
+
     private void saveProductSpecifications(Product product, List<ProductSpecificationRequestDTO> specDTOs) {
+        // Get all templates for this category to map spec names to templates
+        Map<String, CategorySpecificationTemplate> templateMap =
+                templateRepository.findByCategoryIdOrderBySortOrderAscSpecNameAsc(product.getCategory().getId())
+                        .stream()
+                        .collect(Collectors.toMap(CategorySpecificationTemplate::getSpecName, t -> t));
+
         List<ProductSpecification> specifications = specDTOs.stream()
                 .map(specDTO -> {
+                    // Find the template for this specification
+                    CategorySpecificationTemplate template = templateMap.get(specDTO.getSpecName());
+                    if (template == null) {
+                        throw new BusinessLogicException("Invalid specification: " + specDTO.getSpecName() +
+                                " is not defined for this category");
+                    }
+
+                    // Validate specification value against template
+                    validateSpecificationValue(specDTO.getSpecValue(), template);
+
+                    // Create ProductSpecification with template reference
                     ProductSpecification spec = new ProductSpecification();
-                    spec.setSpecName(specDTO.getSpecName());
                     spec.setSpecValue(specDTO.getSpecValue());
-                    spec.setSpecUnit(specDTO.getSpecUnit());
-                    spec.setSpecGroup(specDTO.getSpecGroup());
-                    spec.setSortOrder(specDTO.getSortOrder());
+                    spec.setSpecValueSecondary(specDTO.getSpecValueSecondary()); // For ranges
+                    spec.setSortOrder(template.getSortOrder()); // Use template's sort order
                     spec.setProduct(product);
+                    spec.setTemplate(template); // Set template reference instead of individual fields
                     return spec;
                 })
                 .collect(Collectors.toList());
 
         specificationRepository.saveAll(specifications);
+    }
+
+    private void validateSpecificationValue(String value, CategorySpecificationTemplate template) {
+        if (value == null || value.trim().isEmpty()) {
+            throw new BusinessLogicException("Specification value cannot be empty for " + template.getSpecName());
+        }
+
+        switch (template.getType()) {
+            case NUMBER:
+                try {
+                    Integer.parseInt(value);
+                } catch (NumberFormatException e) {
+                    throw new BusinessLogicException("Invalid number value for " + template.getSpecName() + ": " + value);
+                }
+                break;
+
+            case DECIMAL:
+                try {
+                    new BigDecimal(value);
+                } catch (NumberFormatException e) {
+                    throw new BusinessLogicException("Invalid decimal value for " + template.getSpecName() + ": " + value);
+                }
+                break;
+
+            case BOOLEAN:
+                if (!Arrays.asList("true", "false", "yes", "no", "1", "0").contains(value.toLowerCase())) {
+                    throw new BusinessLogicException("Invalid boolean value for " + template.getSpecName() +
+                            ". Must be: true/false, yes/no, or 1/0");
+                }
+                break;
+
+            case DROPDOWN:
+            case MULTI_SELECT:
+                if (template.getAllowedValues() != null) {
+                    List<String> allowedValues = parseAllowedValues(template.getAllowedValues());
+                    if (!allowedValues.contains(value)) {
+                        throw new BusinessLogicException("Invalid value for " + template.getSpecName() +
+                                ". Allowed values: " + String.join(", ", allowedValues));
+                    }
+                }
+                break;
+
+            case EMAIL:
+                if (!value.matches("^[A-Za-z0-9+_.-]+@(.+)$")) {
+                    throw new BusinessLogicException("Invalid email format for " + template.getSpecName());
+                }
+                break;
+
+            case URL:
+                try {
+                    new URL(value);
+                } catch (MalformedURLException e) {
+                    throw new BusinessLogicException("Invalid URL format for " + template.getSpecName());
+                }
+                break;
+
+            case COLOR:
+                if (!value.matches("^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$")) {
+                    throw new BusinessLogicException("Invalid color format for " + template.getSpecName() +
+                            ". Use hex format like #FF0000");
+                }
+                break;
+
+            // TEXT and other types - no specific validation needed
+            default:
+                break;
+        }
+    }
+
+    private List<String> parseAllowedValues(String allowedValuesJson) {
+        try {
+            return objectMapper.readValue(allowedValuesJson, new TypeReference<List<String>>() {});
+        } catch (Exception e) {
+            log.warn("Failed to parse allowed values: {}", allowedValuesJson);
+            return Collections.emptyList();
+        }
     }
 
     private Product convertToEntity(ProductRequestDTO dto) {

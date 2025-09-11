@@ -7,24 +7,18 @@ import lombok.EqualsAndHashCode;
 @Entity
 @Table(name = "product_specifications")
 @Data
-@EqualsAndHashCode(callSuper = false, exclude = {"product"})
+@EqualsAndHashCode(callSuper = false, exclude = {"product", "template"})
 public class ProductSpecification extends BaseAuditEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, length = 200)
-    private String specName;
-
     @Column(nullable = false, length = 1000)
     private String specValue;
 
-    @Column(length = 500)
-    private String specUnit;
-
-    @Column(length = 100)
-    private String specGroup;
+    @Column(length = 1000)
+    private String specValueSecondary; // For ranges (min-max)
 
     @Column(nullable = false)
     private Integer sortOrder = 0;
@@ -33,30 +27,40 @@ public class ProductSpecification extends BaseAuditEntity {
     @JoinColumn(name = "product_id", nullable = false)
     private Product product;
 
-    public ProductSpecification() {}
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "template_id", nullable = false)
+    private CategorySpecificationTemplate template;
 
-    public ProductSpecification(String specName, String specValue) {
-        this.specName = specName;
-        this.specValue = specValue;
+    // Computed properties
+    public String getSpecName() {
+        return template != null ? template.getSpecName() : null;
     }
 
-    public ProductSpecification(String specName, String specValue, String specUnit) {
-        this.specName = specName;
-        this.specValue = specValue;
-        this.specUnit = specUnit;
+    public String getSpecUnit() {
+        return template != null ? template.getSpecUnit() : null;
     }
 
-    public ProductSpecification(String specName, String specValue, String specUnit, String specGroup) {
-        this.specName = specName;
-        this.specValue = specValue;
-        this.specUnit = specUnit;
-        this.specGroup = specGroup;
+    public String getSpecGroup() {
+        return template != null ? template.getSpecGroup() : null;
     }
 
     public String getFormattedValue() {
-        if (specUnit != null && !specUnit.trim().isEmpty()) {
-            return specValue + " " + specUnit;
+        if (template == null) return specValue;
+
+        switch (template.getType()) {
+            case RANGE:
+                if (specValueSecondary != null) {
+                    return specValue + " - " + specValueSecondary +
+                            (template.getSpecUnit() != null ? " " + template.getSpecUnit() : "");
+                }
+                break;
+            case BOOLEAN:
+                return Boolean.parseBoolean(specValue) ? "Yes" : "No";
+            case NUMBER:
+            case DECIMAL:
+                return specValue + (template.getSpecUnit() != null ? " " + template.getSpecUnit() : "");
         }
+
         return specValue;
     }
 }

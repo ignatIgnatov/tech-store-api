@@ -7,8 +7,10 @@ import com.techstore.dto.external.ExternalProductDto;
 import com.techstore.dto.external.PaginatedProductsDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.core.io.buffer.DataBufferLimitException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -25,6 +27,7 @@ import java.util.List;
 @Slf4j
 public class ValiApiService {
 
+    @Qualifier("largeResponseWebClient")
     private final WebClient webClient;
 
     @Value("${vali.api.base-url}")
@@ -79,28 +82,32 @@ public class ValiApiService {
     public List<ExternalParameterDto> getParametersByCategory(Long categoryId) {
         log.debug("Fetching parameters for category: {}", categoryId);
 
-        List<ExternalParameterDto> parameters = webClient.get()
-                .uri(baseUrl + "/parameters/" + categoryId)
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiToken)
-                .header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
-                .retrieve()
-                .bodyToMono(new ParameterizedTypeReference<List<ExternalParameterDto>>() {
-                })
-                .timeout(Duration.ofMillis(timeout))
-                .retryWhen(Retry.backoff(retryAttempts, Duration.ofMillis(retryDelay)))
-                .onErrorResume(WebClientResponseException.class, ex -> {
-                    log.warn("Error fetching parameters for category {}: {} - {}",
-                            categoryId, ex.getStatusCode(), ex.getResponseBodyAsString());
-                    return Mono.just(List.of());
-                })
-                .block();
+        try {
+            List<ExternalParameterDto> parameters = webClient.get()
+                    .uri(baseUrl + "/parameters/" + categoryId)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiToken)
+                    .header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
+                    .retrieve()
+                    .bodyToMono(new ParameterizedTypeReference<List<ExternalParameterDto>>() {})
+                    .timeout(Duration.ofMillis(timeout))
+                    .retryWhen(Retry.backoff(retryAttempts, Duration.ofMillis(retryDelay)))
+                    .onErrorResume(DataBufferLimitException.class, ex -> {
+                        log.error("Response too large for category {}: {}", categoryId, ex.getMessage());
+                        return Mono.just(List.of());
+                    })
+                    .onErrorResume(WebClientResponseException.class, ex -> {
+                        log.warn("Error fetching parameters for category {}: {} - {}",
+                                categoryId, ex.getStatusCode(), ex.getResponseBodyAsString());
+                        return Mono.just(List.of());
+                    })
+                    .block();
 
-        if (parameters == null || parameters.isEmpty()) {
-            log.warn("No parameters found for category {}", categoryId);
+            return parameters != null ? parameters : List.of();
+
+        } catch (Exception e) {
+            log.error("Unexpected error fetching parameters for category {}: {}", categoryId, e.getMessage());
             return List.of();
         }
-
-        return parameters;
     }
 
 

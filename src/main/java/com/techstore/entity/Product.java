@@ -37,14 +37,14 @@ public class Product extends BaseAuditEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "external_id", unique = true, nullable = false)
+    @Column(name = "external_id", unique = true)
     private Long externalId;
 
     @Column(name = "workflow_id")
     private Long workflowId;
 
     @FullTextField
-    @Column(name = "reference_number", unique = true, nullable = false)
+    @Column(name = "reference_number", unique = true)
     private String referenceNumber;
 
     @FullTextField
@@ -55,12 +55,12 @@ public class Product extends BaseAuditEntity {
     private String barcode;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "manufacturer_id", nullable = false)
+    @JoinColumn(name = "manufacturer_id")
     @IndexedEmbedded
     private Manufacturer manufacturer;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false)
+    @Column(name = "status")
     private ProductStatus status;
 
     @Column(name = "price_client", precision = 10, scale = 2)
@@ -81,22 +81,22 @@ public class Product extends BaseAuditEntity {
     @Column(name = "final_price", precision = 10, scale = 2)
     private BigDecimal finalPrice;
 
-    @Column(name = "show_flag", nullable = false)
+    @Column(name = "show_flag")
     private Boolean show = true;
 
     @Column(name = "warranty_months")
     private Integer warrantyMonths;
 
-    @Column(unique = true, nullable = false, length = 100)
+    @Column(unique = true, length = 100)
     private String sku;
 
     @Column(columnDefinition = "TEXT")
     private String description;
 
-    @Column(nullable = false, precision = 10, scale = 2)
+    @Column(precision = 10, scale = 2)
     private BigDecimal price;
 
-    @Column(nullable = false, precision = 8, scale = 2)
+    @Column(precision = 8, scale = 2)
     private BigDecimal discount = BigDecimal.ZERO;
 
     @Column(name = "discounted_price", precision = 10, scale = 2)
@@ -105,10 +105,8 @@ public class Product extends BaseAuditEntity {
     @Column(nullable = false)
     private Integer stockQuantity = 0;
 
-    @Column(nullable = false)
     private Boolean active = true;
 
-    @Column(nullable = false)
     private Boolean featured = false;
 
     @Column(length = 1000)
@@ -129,11 +127,11 @@ public class Product extends BaseAuditEntity {
     private String dimensions;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "category_id", nullable = false)
+    @JoinColumn(name = "category_id")
     private Category category;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "brand_id", nullable = false)
+    @JoinColumn(name = "brand_id")
     private Brand brand;
 
     @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, fetch = FetchType.LAZY)

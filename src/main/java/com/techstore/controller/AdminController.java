@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -59,6 +60,17 @@ public class AdminController {
     public ResponseEntity<String> syncProducts() {
         try {
             syncService.syncProducts();
+            return ResponseEntity.ok("Products synchronization completed successfully");
+        } catch (Exception e) {
+            log.error("Error during manual products synchronization", e);
+            return ResponseEntity.internalServerError().body("Error during synchronization: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("/sync/products-by-cat")
+    public ResponseEntity<String> syncProductsByCat(@RequestParam("id") Long id) {
+        try {
+            syncService.syncProductsByCategory(id);
             return ResponseEntity.ok("Products synchronization completed successfully");
         } catch (Exception e) {
             log.error("Error during manual products synchronization", e);

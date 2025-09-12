@@ -13,18 +13,21 @@ import com.techstore.entity.ParameterOption;
 import com.techstore.entity.Product;
 import com.techstore.entity.SyncLog;
 import com.techstore.enums.ProductStatus;
+import com.techstore.exception.ResourceNotFoundException;
 import com.techstore.repository.CategoryRepository;
 import com.techstore.repository.ManufacturerRepository;
 import com.techstore.repository.ParameterOptionRepository;
 import com.techstore.repository.ParameterRepository;
 import com.techstore.repository.ProductRepository;
 import com.techstore.repository.SyncLogRepository;
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
@@ -45,6 +48,7 @@ public class SyncService {
     private final ParameterRepository parameterRepository;
     private final ParameterOptionRepository parameterOptionRepository;
     private final SyncLogRepository syncLogRepository;
+    private final EntityManager entityManager;
 
     @Value("${app.sync.enabled}")
     private boolean syncEnabled;
@@ -421,12 +425,19 @@ public class SyncService {
     }
 
     @Transactional
+    public void syncProductsByCategory(Long id) {
+        categoryRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Category not found with id: " + id));
+
+        valiApiService.getProductsByCategory(id);
+    }
+
     public void syncProducts() {
         SyncLog syncLog = createSyncLog("PRODUCTS");
         long startTime = System.currentTimeMillis();
 
         try {
-            log.info("Starting products synchronization using category-based approach");
+            log.info("Starting products synchronization");
 
             long totalProcessed = 0, created = 0, updated = 0, errors = 0;
 
@@ -441,48 +452,12 @@ public class SyncService {
 
             for (Category category : categories) {
                 try {
-                    log.debug("Syncing products for category: {} (ID: {})",
-                            category.getNameEn() != null ? category.getNameEn() : category.getNameBg(),
-                            category.getExternalId());
-
-                    // Fetch products for this category using the new method
-                    List<ExternalProductDto> categoryProducts = valiApiService.getProductsByCategory(category.getExternalId());
-
-                    if (categoryProducts.isEmpty()) {
-                        log.debug("No products found for category {}", category.getExternalId());
-                        continue;
-                    }
-
-                    log.debug("Processing {} products for category {}", categoryProducts.size(), category.getExternalId());
-
-                    for (ExternalProductDto extProduct : categoryProducts) {
-                        try {
-                            Optional<Product> existingProduct = productRepository.findByExternalId(extProduct.getId());
-
-                            if (existingProduct.isPresent()) {
-                                updateProductFromExternal(existingProduct.get(), extProduct, manufacturersMap);
-                                updated++;
-                            } else {
-                                createProductFromExternal(extProduct, manufacturersMap);
-                                created++;
-                            }
-
-                            totalProcessed++;
-
-                            // Log progress every 100 products
-                            if (totalProcessed % 100 == 0) {
-                                log.info("Processed {} products so far...", totalProcessed);
-                            }
-
-                        } catch (Exception e) {
-                            errors++;
-                            log.error("Error processing product {} from category {}: {}",
-                                    extProduct.getId(), category.getExternalId(), e.getMessage());
-                        }
-                    }
-
-                    log.info("Completed category {} - Processed {} products",
-                            category.getExternalId(), categoryProducts.size());
+                    // Process each category in its own transaction
+                    CategorySyncResult result = processCategoryInTransaction(category, manufacturersMap);
+                    totalProcessed += result.processed;
+                    created += result.created;
+                    updated += result.updated;
+                    errors += result.errors;
 
                 } catch (Exception e) {
                     log.error("Error processing category {}: {}", category.getExternalId(), e.getMessage());
@@ -495,7 +470,6 @@ public class SyncService {
             syncLog.setRecordsCreated(created);
             syncLog.setRecordsUpdated(updated);
 
-            // Add error count to log message
             if (errors > 0) {
                 syncLog.setErrorMessage(String.format("Completed with %d errors", errors));
             }
@@ -514,36 +488,127 @@ public class SyncService {
         }
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public CategorySyncResult processCategoryInTransaction(Category category, Map<Long, Manufacturer> manufacturersMap) {
+        long processed = 0, created = 0, updated = 0, errors = 0;
+
+        log.debug("Syncing products for category: {} (ID: {})",
+                category.getNameEn() != null ? category.getNameEn() : category.getNameBg(),
+                category.getExternalId());
+
+        // Fetch products for this category
+        List<ExternalProductDto> categoryProducts = valiApiService.getProductsByCategory(category.getExternalId());
+
+        if (categoryProducts.isEmpty()) {
+            log.debug("No products found for category {}", category.getExternalId());
+            return new CategorySyncResult(0, 0, 0, 0);
+        }
+
+        for (ExternalProductDto extProduct : categoryProducts) {
+            try {
+                Optional<Product> existingProduct = productRepository.findByExternalIdWithSessionClear(extProduct.getId());
+
+                if (existingProduct.isPresent()) {
+                    updateProductFromExternal(existingProduct.get(), extProduct, manufacturersMap);
+                    updated++;
+                } else {
+                    createProductFromExternal(extProduct, manufacturersMap);
+                    created++;
+                }
+
+                processed++;
+
+                // Clear session periodically
+                if (processed % 50 == 0) {
+                    entityManager.flush();
+                    entityManager.clear();
+                }
+
+            } catch (Exception e) {
+                errors++;
+                log.error("Error processing product {} from category {}: {}",
+                        extProduct.getId(), category.getExternalId(), e.getMessage());
+                entityManager.clear();
+            }
+        }
+
+        return new CategorySyncResult(processed, created, updated, errors);
+    }
+
+    private static class CategorySyncResult {
+        long processed;
+        long created;
+        long updated;
+        long errors;
+
+        CategorySyncResult(long processed, long created, long updated, long errors) {
+            this.processed = processed;
+            this.created = created;
+            this.updated = updated;
+            this.errors = errors;
+        }
+    }
+
 
     private void createProductFromExternal(ExternalProductDto extProduct, Map<Long, Manufacturer> manufacturersMap) {
         Manufacturer manufacturer = manufacturersMap.get(extProduct.getManufacturerId());
+
+        // CHANGE: Don't return early if manufacturer is null, just log a warning
         if (manufacturer == null) {
-            log.warn("Manufacturer not found for product {}: {}", extProduct.getId(), extProduct.getManufacturerId());
-            return;
+            log.warn("Manufacturer not found for product {}: {}. Creating product without manufacturer.",
+                    extProduct.getId(), extProduct.getManufacturerId());
+            // Continue without manufacturer - set it to null
+            manufacturer = null;
         }
 
         Product product = new Product();
+        product.setId(null);
         updateProductFieldsFromExternal(product, extProduct, manufacturer);
 
-        product = productRepository.save(product);
-
-        // Create related entities
-        createProductRelatedEntities(product, extProduct);
+        // Retry logic for database operations
+        int maxRetries = 3;
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                product = productRepository.save(product);
+                log.debug("Created product with externalId: {}", extProduct.getId());
+                return;
+            } catch (Exception e) {
+                if (attempt == maxRetries) {
+                    log.error("Failed to create product with externalId {} after {} attempts: {}",
+                            extProduct.getId(), maxRetries, e.getMessage());
+                    throw e;
+                }
+                log.warn("Attempt {} failed for product {}, retrying...", attempt, extProduct.getId());
+                try {
+                    Thread.sleep(1000 * attempt); // Exponential backoff
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException("Interrupted during retry", ie);
+                }
+            }
+        }
     }
 
     private void updateProductFromExternal(Product product, ExternalProductDto extProduct, Map<Long, Manufacturer> manufacturersMap) {
         Manufacturer manufacturer = manufacturersMap.get(extProduct.getManufacturerId());
+
+        // CHANGE: Don't return early if manufacturer is null, just log a warning
         if (manufacturer == null) {
-            log.warn("Manufacturer not found for product {}: {}", extProduct.getId(), extProduct.getManufacturerId());
-            return;
+            log.warn("Manufacturer not found for product {}: {}. Updating product without manufacturer.",
+                    extProduct.getId(), extProduct.getManufacturerId());
+            // Continue without manufacturer - set it to null
+            manufacturer = null;
         }
 
         updateProductFieldsFromExternal(product, extProduct, manufacturer);
 
-        product = productRepository.save(product);
-
-        // Update related entities
-        updateProductRelatedEntities(product, extProduct);
+        try {
+            productRepository.save(product);
+            log.debug("Updated product with externalId: {}", extProduct.getId());
+        } catch (Exception e) {
+            log.error("Failed to update product with externalId {}: {}", extProduct.getId(), e.getMessage());
+            throw e;
+        }
     }
 
     private void updateProductFieldsFromExternal(Product product, ExternalProductDto extProduct, Manufacturer manufacturer) {

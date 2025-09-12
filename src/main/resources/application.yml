@@ -61,19 +61,30 @@ server:
     servlet:
         context-path: /
 
-# FIXED LOGGING CONFIGURATION
+# LOGGING CONFIGURATION
 logging:
     level:
         com.techstore: DEBUG
-        org.springframework.security: INFO
         org.hibernate.SQL: DEBUG
         org.hibernate.type.descriptor.sql.BasicBinder: TRACE
-        root: INFO
     pattern:
         console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+        file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    file:
+        name: logs/techstore.log
 
 # Application Specific Configuration
 app:
+    sync:
+        enabled: true
+        cron: "0 0 2 * * ?" # Every day at 2 AM
+        batch-size: 100
+
+    markup:
+        default-percentage: 20.0
+        max-percentage: 200.0
+        min-percentage: -50.0
+
     # JWT Configuration
     jwt:
         secret: ${JWT_SECRET:techStoreSecretKeyThatShouldBeLongAndSecure123456789}
@@ -96,12 +107,6 @@ app:
     pagination:
         default-size: 20
         max-size: 100
-
-    # Application specific configurations
-    sync:
-        enabled: true
-        cron: "0 0 2 * * ?" # Every day at 2 AM
-        batch-size: 100
 
 # Management/Actuator Configuration
 management:

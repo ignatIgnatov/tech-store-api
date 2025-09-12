@@ -82,7 +82,7 @@ public class AdminController {
 //    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<String> syncAll() {
         try {
-            syncService.scheduledSync();
+            syncService.fetchAll();
             return ResponseEntity.ok("Full synchronization completed successfully");
         } catch (Exception e) {
             log.error("Error during manual full synchronization", e);

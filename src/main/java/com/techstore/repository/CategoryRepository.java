@@ -14,6 +14,8 @@ import java.util.Optional;
 @Repository
 public interface CategoryRepository extends JpaRepository<Category, Long> {
 
+    Optional<Category> findByExternalId(Long externalId);
+
     @Query("SELECT DISTINCT c FROM Category c " +
             "JOIN c.productCategories pc " +
             "JOIN pc.product p " +

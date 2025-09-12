@@ -109,12 +109,12 @@ public class Product extends BaseAuditEntity {
 
     private Boolean featured = false;
 
-    @Column(length = 1000)
+    @Column(name = "image_url", length = 1000)
     private String imageUrl;
 
     @ElementCollection
-    @CollectionTable(name = "product_images", joinColumns = @JoinColumn(name = "product_id"))
-    @Column(name = "image_url", length = 1000)
+    @CollectionTable(name = "additional_images", joinColumns = @JoinColumn(name = "product_id"))
+    @Column(name = "additional_urls", length = 1000)
     private List<String> additionalImages = new ArrayList<>();
 
     @Column(length = 100)

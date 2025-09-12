@@ -1,11 +1,12 @@
 package com.techstore.service;
 
+import com.techstore.dto.external.DescriptionDto;
 import com.techstore.dto.external.ExternalCategoryDto;
 import com.techstore.dto.external.ExternalManufacturerDto;
 import com.techstore.dto.external.ExternalParameterDto;
 import com.techstore.dto.external.ExternalParameterOptionDto;
 import com.techstore.dto.external.ExternalProductDto;
-import com.techstore.dto.external.PaginatedProductsDto;
+import com.techstore.dto.external.ImageDto;
 import com.techstore.entity.Category;
 import com.techstore.entity.Manufacturer;
 import com.techstore.entity.Parameter;
@@ -31,6 +32,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -79,6 +81,13 @@ public class SyncService {
         }
     }
 
+    public void fetchAll() {
+        syncCategories();
+        syncManufacturers();
+        syncParameters();
+        syncProducts();
+    }
+
     @Transactional
     public void syncCategories() {
         SyncLog syncLog = createSyncLog("CATEGORIES");
@@ -108,7 +117,6 @@ public class SyncService {
                 categoryRepository.save(category);
             }
 
-            // Update parent relationships in a second pass
             updateCategoryParents(externalCategories, existingCategories);
 
             syncLog.setStatus("SUCCESS");
@@ -627,7 +635,28 @@ public class SyncService {
         product.setWarrantyMonths(extProduct.getWarranty());
         product.setWeight(extProduct.getWeight());
 
-        // Set names and descriptions
+        StringBuilder description = new StringBuilder();
+        for (DescriptionDto descriptionDto : extProduct.getDescription()) {
+            String current = descriptionDto.getText();
+            description.append(current).append(", ");
+        }
+        product.setDescription(description.toString());
+
+        categoryRepository.findByExternalId(extProduct.getCategories().get(0).getId()).ifPresent(product::setCategory);
+
+        if (extProduct.getImages() != null) {
+            List<ImageDto> images = extProduct.getImages();
+
+            if (images != null && !images.isEmpty()) {
+                product.setImageUrl(images.get(0).getHref());
+                List<String> urls = new ArrayList<>();
+                for (int i = 1; i < images.size(); i++) {
+                    urls.add(images.get(i).getHref());
+                }
+                product.setAdditionalImages(urls);
+            }
+        }
+
         if (extProduct.getName() != null) {
             extProduct.getName().forEach(name -> {
                 if ("bg".equals(name.getLanguageCode())) {

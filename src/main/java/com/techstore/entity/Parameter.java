@@ -11,6 +11,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.Getter;
 import lombok.Setter;
 import org.hibernate.search.mapper.pojo.mapping.definition.annotation.FullTextField;
@@ -20,7 +21,10 @@ import java.util.HashSet;
 import java.util.Set;
 
 @Entity
-@Table(name = "parameters")
+@Table(
+        name = "parameters",
+        uniqueConstraints = @UniqueConstraint(columnNames = {"category_id", "external_id"})
+)
 @Indexed
 @Getter
 @Setter
@@ -30,7 +34,7 @@ public class Parameter extends BaseAuditEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "external_id", unique = true, nullable = false)
+    @Column(name = "external_id", nullable = false)
     private Long externalId;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -38,11 +42,11 @@ public class Parameter extends BaseAuditEntity {
     private Category category;
 
     @FullTextField
-    @Column(name = "name_bg", nullable = false)
+    @Column(name = "name_bg")
     private String nameBg;
 
     @FullTextField
-    @Column(name = "name_en", nullable = false)
+    @Column(name = "name_en")
     private String nameEn;
 
     @Column(name = "sort_order")

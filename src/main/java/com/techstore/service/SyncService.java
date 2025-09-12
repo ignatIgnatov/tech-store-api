@@ -27,6 +27,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -62,10 +63,13 @@ public class SyncService {
         log.info("Starting scheduled synchronization");
         try {
             syncCategories();
+            log.info("Scheduled category synchronization completed successfully at " + LocalDateTime.now());
             syncManufacturers();
+            log.info("Scheduled manufacturers synchronization completed successfully at " + LocalDateTime.now());
             syncParameters();
+            log.info("Scheduled parameters synchronization completed successfully at" + LocalDateTime.now());
             syncProducts();
-            log.info("Scheduled synchronization completed successfully");
+            log.info("Scheduled products synchronization completed successfully at " + LocalDateTime.now());
         } catch (Exception e) {
             log.error("Error during scheduled synchronization", e);
         }
@@ -182,7 +186,9 @@ public class SyncService {
             for (Category category : categories) {
                 List<ExternalParameterDto> externalParameters = valiApiService.getParametersByCategory(category.getExternalId());
 
-                Map<Long, Parameter> existingParameters = parameterRepository.findByCategoryIdOrderByOrderAsc(category.getId())
+                // Вземаме съществуващите параметри за категорията
+                Map<Long, Parameter> existingParameters = parameterRepository
+                        .findByCategoryIdOrderByOrderAsc(category.getId())
                         .stream()
                         .collect(Collectors.toMap(Parameter::getExternalId, p -> p));
 
@@ -190,14 +196,18 @@ public class SyncService {
                     Parameter parameter = existingParameters.get(extParameter.getId());
 
                     if (parameter == null) {
+                        // Нов параметър – създаваме и merge-ваме
                         parameter = createParameterFromExternal(extParameter, category);
+                        parameter = parameterRepository.save(parameter);
                         created++;
                     } else {
+                        // Съществуващ – обновяваме
                         updateParameterFromExternal(parameter, extParameter);
+                        parameter = parameterRepository.save(parameter);
                         updated++;
                     }
 
-                    parameterRepository.save(parameter);
+                    // Синхронизация на опциите
                     syncParameterOptions(parameter, extParameter.getOptions());
                 }
 
@@ -222,7 +232,27 @@ public class SyncService {
         }
     }
 
-    // Helper methods
+    private void syncParameterOptions(Parameter parameter, List<ExternalParameterOptionDto> externalOptions) {
+        Map<Long, ParameterOption> existingOptions = parameterOptionRepository
+                .findByParameterIdOrderByOrderAsc(parameter.getId())
+                .stream()
+                .collect(Collectors.toMap(ParameterOption::getExternalId, o -> o));
+
+        for (ExternalParameterOptionDto extOption : externalOptions) {
+            ParameterOption option = existingOptions.get(extOption.getId());
+
+            if (option == null) {
+                // Нови опции – създаваме и merge-ваме
+                option = createParameterOptionFromExternal(extOption, parameter);
+                parameterOptionRepository.save(option);
+            } else {
+                // Съществуващи – обновяваме
+                updateParameterOptionFromExternal(option, extOption);
+                parameterOptionRepository.save(option);
+            }
+        }
+    }
+
     private SyncLog createSyncLog(String syncType) {
         SyncLog syncLog = new SyncLog();
         syncLog.setSyncType(syncType);
@@ -246,8 +276,12 @@ public class SyncService {
             });
         }
 
+        String baseName = category.getNameEn() != null ? category.getNameEn() : category.getNameBg();
+        category.setSlug(generateSlug(baseName));
+
         return category;
     }
+
 
     private void updateCategoryFromExternal(Category category, ExternalCategoryDto extCategory) {
         category.setShow(extCategory.getShow());
@@ -262,7 +296,13 @@ public class SyncService {
                 }
             });
         }
+
+        if (category.getSlug() == null || category.getSlug().isEmpty()) {
+            String baseName = category.getNameEn() != null ? category.getNameEn() : category.getNameBg();
+            category.setSlug(generateSlug(baseName));
+        }
     }
+
 
     private void updateCategoryParents(List<ExternalCategoryDto> externalCategories, Map<Long, Category> existingCategories) {
         for (ExternalCategoryDto extCategory : externalCategories) {
@@ -347,24 +387,6 @@ public class SyncService {
         }
     }
 
-    private void syncParameterOptions(Parameter parameter, List<ExternalParameterOptionDto> externalOptions) {
-        Map<Long, ParameterOption> existingOptions = parameterOptionRepository.findByParameterIdOrderByOrderAsc(parameter.getExternalId())
-                .stream()
-                .collect(Collectors.toMap(ParameterOption::getExternalId, o -> o));
-
-        for (ExternalParameterOptionDto extOption : externalOptions) {
-            ParameterOption option = existingOptions.get(extOption.getId());
-
-            if (option == null) {
-                option = createParameterOptionFromExternal(extOption, parameter);
-            } else {
-                updateParameterOptionFromExternal(option, extOption);
-            }
-
-            parameterOptionRepository.save(option);
-        }
-    }
-
     private ParameterOption createParameterOptionFromExternal(ExternalParameterOptionDto extOption, Parameter parameter) {
         ParameterOption option = new ParameterOption();
         option.setExternalId(extOption.getId());
@@ -404,21 +426,36 @@ public class SyncService {
         long startTime = System.currentTimeMillis();
 
         try {
-            log.info("Starting products synchronization");
+            log.info("Starting products synchronization using category-based approach");
 
-            long totalProcessed = 0, created = 0, updated = 0;
-            int currentPage = 1;
-            PaginatedProductsDto productPage;
+            long totalProcessed = 0, created = 0, updated = 0, errors = 0;
 
+            // Prepare manufacturers map
             Map<Long, Manufacturer> manufacturersMap = manufacturerRepository.findAll()
                     .stream()
                     .collect(Collectors.toMap(Manufacturer::getExternalId, m -> m));
 
-            do {
-                productPage = valiApiService.getProducts(currentPage, batchSize);
+            // Get all categories for iteration
+            List<Category> categories = categoryRepository.findAll();
+            log.info("Found {} categories to process", categories.size());
 
-                if (productPage.getItems() != null) {
-                    for (ExternalProductDto extProduct : productPage.getItems()) {
+            for (Category category : categories) {
+                try {
+                    log.debug("Syncing products for category: {} (ID: {})",
+                            category.getNameEn() != null ? category.getNameEn() : category.getNameBg(),
+                            category.getExternalId());
+
+                    // Fetch products for this category using the new method
+                    List<ExternalProductDto> categoryProducts = valiApiService.getProductsByCategory(category.getExternalId());
+
+                    if (categoryProducts.isEmpty()) {
+                        log.debug("No products found for category {}", category.getExternalId());
+                        continue;
+                    }
+
+                    log.debug("Processing {} products for category {}", categoryProducts.size(), category.getExternalId());
+
+                    for (ExternalProductDto extProduct : categoryProducts) {
                         try {
                             Optional<Product> existingProduct = productRepository.findByExternalId(extProduct.getId());
 
@@ -431,23 +468,40 @@ public class SyncService {
                             }
 
                             totalProcessed++;
+
+                            // Log progress every 100 products
+                            if (totalProcessed % 100 == 0) {
+                                log.info("Processed {} products so far...", totalProcessed);
+                            }
+
                         } catch (Exception e) {
-                            log.error("Error processing product {}: {}", extProduct.getId(), e.getMessage());
+                            errors++;
+                            log.error("Error processing product {} from category {}: {}",
+                                    extProduct.getId(), category.getExternalId(), e.getMessage());
                         }
                     }
+
+                    log.info("Completed category {} - Processed {} products",
+                            category.getExternalId(), categoryProducts.size());
+
+                } catch (Exception e) {
+                    log.error("Error processing category {}: {}", category.getExternalId(), e.getMessage());
+                    errors++;
                 }
-
-                currentPage++;
-                log.info("Processed page {} of {} products", currentPage - 1, productPage.getTotalItems());
-
-            } while (currentPage <= productPage.getLastPage());
+            }
 
             syncLog.setStatus("SUCCESS");
             syncLog.setRecordsProcessed(totalProcessed);
             syncLog.setRecordsCreated(created);
             syncLog.setRecordsUpdated(updated);
 
-            log.info("Products synchronization completed - Created: {}, Updated: {}", created, updated);
+            // Add error count to log message
+            if (errors > 0) {
+                syncLog.setErrorMessage(String.format("Completed with %d errors", errors));
+            }
+
+            log.info("Products synchronization completed - Created: {}, Updated: {}, Errors: {}",
+                    created, updated, errors);
 
         } catch (Exception e) {
             syncLog.setStatus("FAILED");
@@ -459,6 +513,7 @@ public class SyncService {
             syncLogRepository.save(syncLog);
         }
     }
+
 
     private void createProductFromExternal(ExternalProductDto extProduct, Map<Long, Manufacturer> manufacturersMap) {
         Manufacturer manufacturer = manufacturersMap.get(extProduct.getManufacturerId());
@@ -544,5 +599,12 @@ public class SyncService {
         // Implementation would involve complex entity relationships
         // For brevity, showing the structure but not full implementation
         log.debug("Updating related entities for product: {}", product.getId());
+    }
+
+    private String generateSlug(String name) {
+        return name == null ? null :
+                name.toLowerCase()
+                        .replaceAll("[^a-z0-9]+", "-")
+                        .replaceAll("^-|-$", "");
     }
 }

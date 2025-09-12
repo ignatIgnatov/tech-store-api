@@ -60,12 +60,12 @@ public class EnhancedSearchService {
 
         // Sort by relevance (products with name matches first, then spec matches)
         productList.sort((p1, p2) -> {
-            boolean p1NameMatch = p1.getName().toLowerCase().contains(query.toLowerCase());
-            boolean p2NameMatch = p2.getName().toLowerCase().contains(query.toLowerCase());
+            boolean p1NameMatch = p1.getNameEn().toLowerCase().contains(query.toLowerCase());
+            boolean p2NameMatch = p2.getNameEn().toLowerCase().contains(query.toLowerCase());
 
             if (p1NameMatch && !p2NameMatch) return -1;
             if (!p1NameMatch && p2NameMatch) return 1;
-            return p1.getName().compareToIgnoreCase(p2.getName());
+            return p1.getNameEn().compareToIgnoreCase(p2.getNameEn());
         });
 
         int start = (int) pageable.getOffset();
@@ -98,7 +98,7 @@ public class EnhancedSearchService {
         // Get product name suggestions
         Page<Product> productMatches = productRepository.searchProducts(query, PageRequest.of(0, limit / 2));
         productMatches.getContent().forEach(product -> {
-            suggestions.add(product.getName());
+            suggestions.add(product.getNameEn());
             suggestions.add(product.getBrand().getName());
         });
 
@@ -133,7 +133,7 @@ public class EnhancedSearchService {
     private ProductSummaryDTO convertToSummaryDTO(Product product) {
         return ProductSummaryDTO.builder()
                 .id(product.getId())
-                .name(product.getName())
+                .name(product.getNameEn())
                 .sku(product.getSku())
                 .price(product.getPrice())
                 .discount(product.getDiscount())

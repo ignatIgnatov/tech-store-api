@@ -363,7 +363,7 @@ public class ProductService {
                 .orElseThrow(() -> new ResourceNotFoundException("Brand not found with id: " + dto.getBrandId()));
 
         Product product = new Product();
-        product.setName(dto.getName());
+        product.setNameEn(dto.getName());
         product.setSku(dto.getSku());
         product.setDescription(dto.getDescription());
         product.setPrice(dto.getPrice());
@@ -389,7 +389,7 @@ public class ProductService {
         Brand brand = brandRepository.findById(dto.getBrandId())
                 .orElseThrow(() -> new ResourceNotFoundException("Brand not found with id: " + dto.getBrandId()));
 
-        product.setName(dto.getName());
+        product.setNameEn(dto.getName());
         product.setSku(dto.getSku());
         product.setDescription(dto.getDescription());
         product.setPrice(dto.getPrice());
@@ -409,7 +409,7 @@ public class ProductService {
     private ProductResponseDTO convertToResponseDTO(Product product) {
         return ProductResponseDTO.builder()
                 .id(product.getId())
-                .name(product.getName())
+                .name(product.getNameEn())
                 .sku(product.getSku())
                 .description(product.getDescription())
                 .price(product.getPrice())
@@ -436,7 +436,7 @@ public class ProductService {
     private ProductSummaryDTO convertToSummaryDTO(Product product) {
         return ProductSummaryDTO.builder()
                 .id(product.getId())
-                .name(product.getName())
+                .name(product.getNameEn())
                 .sku(product.getSku())
                 .price(product.getPrice())
                 .discount(product.getDiscount())

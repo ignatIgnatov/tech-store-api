@@ -1,6 +1,10 @@
 package com.techstore.service;
 
-import com.techstore.dto.external.*;
+import com.techstore.dto.external.ExternalCategoryDto;
+import com.techstore.dto.external.ExternalManufacturerDto;
+import com.techstore.dto.external.ExternalParameterDto;
+import com.techstore.dto.external.ExternalProductDto;
+import com.techstore.dto.external.PaginatedProductsDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -46,7 +50,8 @@ public class ValiApiService {
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiToken)
                 .header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
                 .retrieve()
-                .bodyToMono(new ParameterizedTypeReference<List<ExternalCategoryDto>>() {})
+                .bodyToMono(new ParameterizedTypeReference<List<ExternalCategoryDto>>() {
+                })
                 .timeout(Duration.ofMillis(timeout))
                 .retryWhen(Retry.backoff(retryAttempts, Duration.ofMillis(retryDelay)))
                 .doOnError(WebClientResponseException.class, ex ->
@@ -62,7 +67,8 @@ public class ValiApiService {
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiToken)
                 .header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
                 .retrieve()
-                .bodyToMono(new ParameterizedTypeReference<List<ExternalManufacturerDto>>() {})
+                .bodyToMono(new ParameterizedTypeReference<List<ExternalManufacturerDto>>() {
+                })
                 .timeout(Duration.ofMillis(timeout))
                 .retryWhen(Retry.backoff(retryAttempts, Duration.ofMillis(retryDelay)))
                 .doOnError(WebClientResponseException.class, ex ->
@@ -73,12 +79,13 @@ public class ValiApiService {
     public List<ExternalParameterDto> getParametersByCategory(Long categoryId) {
         log.debug("Fetching parameters for category: {}", categoryId);
 
-        return webClient.get()
+        List<ExternalParameterDto> parameters = webClient.get()
                 .uri(baseUrl + "/parameters/" + categoryId)
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiToken)
                 .header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
                 .retrieve()
-                .bodyToMono(new ParameterizedTypeReference<List<ExternalParameterDto>>() {})
+                .bodyToMono(new ParameterizedTypeReference<List<ExternalParameterDto>>() {
+                })
                 .timeout(Duration.ofMillis(timeout))
                 .retryWhen(Retry.backoff(retryAttempts, Duration.ofMillis(retryDelay)))
                 .onErrorResume(WebClientResponseException.class, ex -> {
@@ -87,8 +94,79 @@ public class ValiApiService {
                     return Mono.just(List.of());
                 })
                 .block();
+
+        if (parameters == null || parameters.isEmpty()) {
+            log.warn("No parameters found for category {}", categoryId);
+            return List.of();
+        }
+
+        return parameters;
     }
 
+
+    public List<ExternalProductDto> getProductsByCategory(Long categoryId) {
+        log.debug("Fetching products for category: {}", categoryId);
+
+        List<ExternalProductDto> products = webClient.get()
+                .uri(baseUrl + "/products/by_category/" + categoryId + "/full")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiToken)
+                .header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
+                .retrieve()
+                .bodyToMono(new ParameterizedTypeReference<List<ExternalProductDto>>() {
+                })
+                .timeout(Duration.ofMillis(timeout))
+                .retryWhen(Retry.backoff(retryAttempts, Duration.ofMillis(retryDelay)))
+                .onErrorResume(WebClientResponseException.class, ex -> {
+                    log.warn("Error fetching products for category {}: {} - {}",
+                            categoryId, ex.getStatusCode(), ex.getResponseBodyAsString());
+                    return Mono.just(List.of());
+                })
+                .block();
+
+        if (products == null) {
+            log.warn("No products found for category {}", categoryId);
+            return List.of();
+        }
+
+        log.debug("Found {} products for category {}", products.size(), categoryId);
+        return products;
+    }
+
+    /**
+     * NEW METHOD: Fetch products by manufacturer with full details
+     */
+    public List<ExternalProductDto> getProductsByManufacturer(Long manufacturerId) {
+        log.debug("Fetching products for manufacturer: {}", manufacturerId);
+
+        List<ExternalProductDto> products = webClient.get()
+                .uri(baseUrl + "/products/by_manufacturer/" + manufacturerId + "/full")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiToken)
+                .header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
+                .retrieve()
+                .bodyToMono(new ParameterizedTypeReference<List<ExternalProductDto>>() {
+                })
+                .timeout(Duration.ofMillis(timeout))
+                .retryWhen(Retry.backoff(retryAttempts, Duration.ofMillis(retryDelay)))
+                .onErrorResume(WebClientResponseException.class, ex -> {
+                    log.warn("Error fetching products for manufacturer {}: {} - {}",
+                            manufacturerId, ex.getStatusCode(), ex.getResponseBodyAsString());
+                    return Mono.just(List.of());
+                })
+                .block();
+
+        if (products == null) {
+            log.warn("No products found for manufacturer {}", manufacturerId);
+            return List.of();
+        }
+
+        log.debug("Found {} products for manufacturer {}", products.size(), manufacturerId);
+        return products;
+    }
+
+    /**
+     * EXISTING METHOD: Keep for backward compatibility or full sync scenarios
+     * Fetch paginated products with full details
+     */
     public PaginatedProductsDto getProducts(int page, int perPage) {
         log.debug("Fetching products page: {}, perPage: {}", page, perPage);
 
@@ -113,7 +191,7 @@ public class ValiApiService {
     public ExternalProductDto getProduct(Long productId) {
         log.debug("Fetching product: {}", productId);
 
-        return webClient.get()
+        ExternalProductDto product = webClient.get()
                 .uri(baseUrl + "/product/" + productId + "/full")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiToken)
                 .header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
@@ -121,9 +199,22 @@ public class ValiApiService {
                 .bodyToMono(ExternalProductDto.class)
                 .timeout(Duration.ofMillis(timeout))
                 .retryWhen(Retry.backoff(retryAttempts, Duration.ofMillis(retryDelay)))
-                .doOnError(WebClientResponseException.class, ex ->
-                        log.error("Error fetching product {}: {} - {}",
-                                productId, ex.getStatusCode(), ex.getResponseBodyAsString()))
+                .onErrorResume(WebClientResponseException.class, ex -> {
+                    log.warn("Error fetching product {}: {} - {}",
+                            productId, ex.getStatusCode(), ex.getResponseBodyAsString());
+                    return Mono.empty();
+                })
                 .block();
+
+        if (product == null) {
+            log.warn("Product {} not found or empty response", productId);
+            return null;
+        }
+
+        if (product.getParameters() == null || product.getParameters().isEmpty()) {
+            log.warn("No parameters found for product {}", productId);
+        }
+
+        return product;
     }
 }

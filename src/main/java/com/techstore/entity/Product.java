@@ -1,7 +1,21 @@
 package com.techstore.entity;
 
 import com.techstore.enums.ProductStatus;
-import jakarta.persistence.*;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.CollectionTable;
+import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.Table;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import org.hibernate.search.mapper.pojo.mapping.definition.annotation.FullTextField;
@@ -72,9 +86,6 @@ public class Product extends BaseAuditEntity {
 
     @Column(name = "warranty_months")
     private Integer warrantyMonths;
-
-    @Column(nullable = false, length = 500)
-    private String name;
 
     @Column(unique = true, nullable = false, length = 100)
     private String sku;
@@ -165,7 +176,6 @@ public class Product extends BaseAuditEntity {
     @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private Set<CartItem> cartItems = new HashSet<>();
 
-    // Method to calculate final price with markup
     public void calculateFinalPrice() {
         if (priceClient != null && markupPercentage != null) {
             BigDecimal markup = priceClient.multiply(markupPercentage.divide(BigDecimal.valueOf(100)));

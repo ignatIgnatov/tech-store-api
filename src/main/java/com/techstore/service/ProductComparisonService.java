@@ -64,7 +64,7 @@ public class ProductComparisonService {
 
         return ProductComparisonDTO.builder()
                 .id(product.getId())
-                .name(product.getName())
+                .name(product.getNameEn())
                 .sku(product.getSku())
                 .price(product.getPrice())
                 .discountedPrice(product.getDiscountedPrice())

@@ -169,7 +169,7 @@ public class AdvancedFilteringService {
     private ProductSummaryDTO convertToSummaryDTO(Product product) {
         return ProductSummaryDTO.builder()
                 .id(product.getId())
-                .name(product.getName())
+                .name(product.getNameEn())
                 .sku(product.getSku())
                 .price(product.getPrice())
                 .discount(product.getDiscount())

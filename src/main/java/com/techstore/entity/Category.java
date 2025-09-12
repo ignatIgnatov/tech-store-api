@@ -1,6 +1,16 @@
 package com.techstore.entity;
 
-import jakarta.persistence.*;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.Table;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import org.hibernate.search.mapper.pojo.mapping.definition.annotation.FullTextField;
@@ -10,7 +20,6 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 @Entity
 @Table(name = "categories")
@@ -33,7 +42,7 @@ public class Category extends BaseAuditEntity {
     @Column(name = "name_bg")
     private String nameBg;
 
-    @Column(unique = true, nullable = false, length = 200)
+    @Column(length = 200)
     private String slug;
 
     @Column(columnDefinition = "TEXT")
@@ -71,14 +80,14 @@ public class Category extends BaseAuditEntity {
         return specificationTemplates.stream()
                 .filter(CategorySpecificationTemplate::getRequired)
                 .sorted(Comparator.comparing(CategorySpecificationTemplate::getSortOrder))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     public List<CategorySpecificationTemplate> getFilterableSpecifications() {
         return specificationTemplates.stream()
                 .filter(CategorySpecificationTemplate::getFilterable)
                 .sorted(Comparator.comparing(CategorySpecificationTemplate::getSortOrder))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     public boolean isParentCategory() {

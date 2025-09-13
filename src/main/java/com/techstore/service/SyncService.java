@@ -198,7 +198,6 @@ public class SyncService {
             for (Category category : categories) {
                 List<ExternalParameterDto> externalParameters = valiApiService.getParametersByCategory(category.getExternalId());
 
-                // Вземаме съществуващите параметри за категорията
                 Map<Long, Parameter> existingParameters = parameterRepository
                         .findByCategoryIdOrderByOrderAsc(category.getId())
                         .stream()
@@ -208,18 +207,15 @@ public class SyncService {
                     Parameter parameter = existingParameters.get(extParameter.getId());
 
                     if (parameter == null) {
-                        // Нов параметър – създаваме и merge-ваме
                         parameter = createParameterFromExternal(extParameter, category);
                         parameter = parameterRepository.save(parameter);
                         created++;
                     } else {
-                        // Съществуващ – обновяваме
                         updateParameterFromExternal(parameter, extParameter);
                         parameter = parameterRepository.save(parameter);
                         updated++;
                     }
 
-                    // Синхронизация на опциите
                     syncParameterOptions(parameter, extParameter.getOptions());
                 }
 
@@ -244,6 +240,251 @@ public class SyncService {
         }
     }
 
+    @Transactional
+    public void syncProductsByCategory(Long id) {
+        categoryRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Category not found with id: " + id));
+
+        valiApiService.getProductsByCategory(id);
+    }
+
+    public void syncProducts() {
+        SyncLog syncLog = createSyncLog("PRODUCTS");
+        long startTime = System.currentTimeMillis();
+
+        try {
+            log.info("Starting products synchronization");
+
+            long totalProcessed = 0, created = 0, updated = 0, errors = 0;
+
+            Map<Long, Manufacturer> manufacturersMap = manufacturerRepository.findAll()
+                    .stream()
+                    .collect(Collectors.toMap(Manufacturer::getExternalId, m -> m));
+
+            List<Category> categories = categoryRepository.findAll();
+            log.info("Found {} categories to process", categories.size());
+
+            for (Category category : categories) {
+                try {
+                    CategorySyncResult result = processCategoryInTransaction(category, manufacturersMap);
+                    totalProcessed += result.processed;
+                    created += result.created;
+                    updated += result.updated;
+                    errors += result.errors;
+
+                } catch (Exception e) {
+                    log.error("Error processing category {}: {}", category.getExternalId(), e.getMessage());
+                    errors++;
+                }
+            }
+
+            syncLog.setStatus("SUCCESS");
+            syncLog.setRecordsProcessed(totalProcessed);
+            syncLog.setRecordsCreated(created);
+            syncLog.setRecordsUpdated(updated);
+
+            if (errors > 0) {
+                syncLog.setErrorMessage(String.format("Completed with %d errors", errors));
+            }
+
+            log.info("Products synchronization completed - Created: {}, Updated: {}, Errors: {}",
+                    created, updated, errors);
+
+        } catch (Exception e) {
+            syncLog.setStatus("FAILED");
+            syncLog.setErrorMessage(e.getMessage());
+            log.error("Error during products synchronization", e);
+            throw e;
+        } finally {
+            syncLog.setDurationMs(System.currentTimeMillis() - startTime);
+            syncLogRepository.save(syncLog);
+        }
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public CategorySyncResult processCategoryInTransaction(Category category, Map<Long, Manufacturer> manufacturersMap) {
+        long processed = 0, created = 0, updated = 0, errors = 0;
+
+        log.debug("Syncing products for category: {} (ID: {})",
+                category.getNameEn() != null ? category.getNameEn() : category.getNameBg(),
+                category.getExternalId());
+
+        List<ExternalProductDto> categoryProducts = valiApiService.getProductsByCategory(category.getExternalId());
+
+        if (categoryProducts.isEmpty()) {
+            log.debug("No products found for category {}", category.getExternalId());
+            return new CategorySyncResult(0, 0, 0, 0);
+        }
+
+        for (ExternalProductDto extProduct : categoryProducts) {
+            try {
+                Optional<Product> existingProduct = productRepository.findByExternalIdWithSessionClear(extProduct.getId());
+
+                if (existingProduct.isPresent()) {
+                    updateProductFromExternal(existingProduct.get(), extProduct, manufacturersMap);
+                    updated++;
+                } else {
+                    createProductFromExternal(extProduct, manufacturersMap);
+                    created++;
+                }
+
+                processed++;
+
+                if (processed % 50 == 0) {
+                    entityManager.flush();
+                    entityManager.clear();
+                }
+
+            } catch (Exception e) {
+                errors++;
+                log.error("Error processing product {} from category {}: {}",
+                        extProduct.getId(), category.getExternalId(), e.getMessage());
+                entityManager.clear();
+            }
+        }
+
+        return new CategorySyncResult(processed, created, updated, errors);
+    }
+
+    private static class CategorySyncResult {
+        long processed;
+        long created;
+        long updated;
+        long errors;
+
+        CategorySyncResult(long processed, long created, long updated, long errors) {
+            this.processed = processed;
+            this.created = created;
+            this.updated = updated;
+            this.errors = errors;
+        }
+    }
+
+
+    private void createProductFromExternal(ExternalProductDto extProduct, Map<Long, Manufacturer> manufacturersMap) {
+        Manufacturer manufacturer = manufacturersMap.get(extProduct.getManufacturerId());
+
+        if (manufacturer == null) {
+            log.warn("Manufacturer not found for product {}: {}. Creating product without manufacturer.",
+                    extProduct.getId(), extProduct.getManufacturerId());
+            manufacturer = null;
+        }
+
+        Product product = new Product();
+        product.setId(null);
+        updateProductFieldsFromExternal(product, extProduct, manufacturer);
+
+        int maxRetries = 3;
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                product = productRepository.save(product);
+                log.debug("Created product with externalId: {}", extProduct.getId());
+                return;
+            } catch (Exception e) {
+                if (attempt == maxRetries) {
+                    log.error("Failed to create product with externalId {} after {} attempts: {}",
+                            extProduct.getId(), maxRetries, e.getMessage());
+                    throw e;
+                }
+                log.warn("Attempt {} failed for product {}, retrying...", attempt, extProduct.getId());
+                try {
+                    Thread.sleep(1000 * attempt);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException("Interrupted during retry", ie);
+                }
+            }
+        }
+    }
+
+    private void updateProductFromExternal(Product product, ExternalProductDto extProduct, Map<Long, Manufacturer> manufacturersMap) {
+        Manufacturer manufacturer = manufacturersMap.get(extProduct.getManufacturerId());
+
+        if (manufacturer == null) {
+            log.warn("Manufacturer not found for product {}: {}. Updating product without manufacturer.",
+                    extProduct.getId(), extProduct.getManufacturerId());
+            manufacturer = null;
+        }
+
+        updateProductFieldsFromExternal(product, extProduct, manufacturer);
+
+        try {
+            productRepository.save(product);
+            log.debug("Updated product with externalId: {}", extProduct.getId());
+        } catch (Exception e) {
+            log.error("Failed to update product with externalId {}: {}", extProduct.getId(), e.getMessage());
+            throw e;
+        }
+    }
+
+    private void updateProductFieldsFromExternal(Product product, ExternalProductDto extProduct, Manufacturer manufacturer) {
+        product.setExternalId(extProduct.getId());
+        product.setWorkflowId(extProduct.getIdWF());
+        product.setReferenceNumber(extProduct.getReferenceNumber());
+        product.setModel(extProduct.getModel());
+        product.setBarcode(extProduct.getBarcode());
+        product.setManufacturer(manufacturer);
+        product.setStatus(ProductStatus.fromCode(extProduct.getStatus()));
+        product.setPriceClient(extProduct.getPriceClient());
+        product.setPricePartner(extProduct.getPricePartner());
+        product.setPricePromo(extProduct.getPricePromo());
+        product.setPriceClientPromo(extProduct.getPriceClientPromo());
+        product.setShow(extProduct.getShow());
+        product.setWarrantyMonths(extProduct.getWarranty());
+        product.setWeight(extProduct.getWeight());
+
+        StringBuilder description = new StringBuilder();
+        for (DescriptionDto descriptionDto : extProduct.getDescription()) {
+            String current = descriptionDto.getText();
+            description.append(current).append(", ");
+        }
+        product.setDescription(description.toString());
+
+        categoryRepository.findByExternalId(extProduct.getCategories().get(0).getId()).ifPresent(product::setCategory);
+
+        if (extProduct.getImages() != null) {
+            List<ImageDto> images = extProduct.getImages();
+
+            if (images != null && !images.isEmpty()) {
+                product.setImageUrl(images.get(0).getHref());
+                List<String> urls = new ArrayList<>();
+                for (int i = 1; i < images.size(); i++) {
+                    urls.add(images.get(i).getHref());
+                }
+                product.setAdditionalImages(urls);
+            }
+        }
+
+        if (extProduct.getName() != null) {
+            extProduct.getName().forEach(name -> {
+                if ("bg".equals(name.getLanguageCode())) {
+                    product.setNameBg(name.getText());
+                } else if ("en".equals(name.getLanguageCode())) {
+                    product.setNameEn(name.getText());
+                }
+            });
+        }
+
+        if (extProduct.getDescription() != null) {
+            extProduct.getDescription().forEach(desc -> {
+                if ("bg".equals(desc.getLanguageCode())) {
+                    product.setDescriptionBg(desc.getText());
+                } else if ("en".equals(desc.getLanguageCode())) {
+                    product.setDescriptionEn(desc.getText());
+                }
+            });
+        }
+
+        product.calculateFinalPrice();
+    }
+
+    private String generateSlug(String name) {
+        return name == null ? null :
+                name.toLowerCase()
+                        .replaceAll("[^a-z0-9]+", "-")
+                        .replaceAll("^-|-$", "");
+    }
+
     private void syncParameterOptions(Parameter parameter, List<ExternalParameterOptionDto> externalOptions) {
         Map<Long, ParameterOption> existingOptions = parameterOptionRepository
                 .findByParameterIdOrderByOrderAsc(parameter.getId())
@@ -254,11 +495,9 @@ public class SyncService {
             ParameterOption option = existingOptions.get(extOption.getId());
 
             if (option == null) {
-                // Нови опции – създаваме и merge-ваме
                 option = createParameterOptionFromExternal(extOption, parameter);
                 parameterOptionRepository.save(option);
             } else {
-                // Съществуващи – обновяваме
                 updateParameterOptionFromExternal(option, extOption);
                 parameterOptionRepository.save(option);
             }
@@ -430,275 +669,5 @@ public class SyncService {
                 }
             });
         }
-    }
-
-    @Transactional
-    public void syncProductsByCategory(Long id) {
-        categoryRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Category not found with id: " + id));
-
-        valiApiService.getProductsByCategory(id);
-    }
-
-    public void syncProducts() {
-        SyncLog syncLog = createSyncLog("PRODUCTS");
-        long startTime = System.currentTimeMillis();
-
-        try {
-            log.info("Starting products synchronization");
-
-            long totalProcessed = 0, created = 0, updated = 0, errors = 0;
-
-            // Prepare manufacturers map
-            Map<Long, Manufacturer> manufacturersMap = manufacturerRepository.findAll()
-                    .stream()
-                    .collect(Collectors.toMap(Manufacturer::getExternalId, m -> m));
-
-            // Get all categories for iteration
-            List<Category> categories = categoryRepository.findAll();
-            log.info("Found {} categories to process", categories.size());
-
-            for (Category category : categories) {
-                try {
-                    // Process each category in its own transaction
-                    CategorySyncResult result = processCategoryInTransaction(category, manufacturersMap);
-                    totalProcessed += result.processed;
-                    created += result.created;
-                    updated += result.updated;
-                    errors += result.errors;
-
-                } catch (Exception e) {
-                    log.error("Error processing category {}: {}", category.getExternalId(), e.getMessage());
-                    errors++;
-                }
-            }
-
-            syncLog.setStatus("SUCCESS");
-            syncLog.setRecordsProcessed(totalProcessed);
-            syncLog.setRecordsCreated(created);
-            syncLog.setRecordsUpdated(updated);
-
-            if (errors > 0) {
-                syncLog.setErrorMessage(String.format("Completed with %d errors", errors));
-            }
-
-            log.info("Products synchronization completed - Created: {}, Updated: {}, Errors: {}",
-                    created, updated, errors);
-
-        } catch (Exception e) {
-            syncLog.setStatus("FAILED");
-            syncLog.setErrorMessage(e.getMessage());
-            log.error("Error during products synchronization", e);
-            throw e;
-        } finally {
-            syncLog.setDurationMs(System.currentTimeMillis() - startTime);
-            syncLogRepository.save(syncLog);
-        }
-    }
-
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public CategorySyncResult processCategoryInTransaction(Category category, Map<Long, Manufacturer> manufacturersMap) {
-        long processed = 0, created = 0, updated = 0, errors = 0;
-
-        log.debug("Syncing products for category: {} (ID: {})",
-                category.getNameEn() != null ? category.getNameEn() : category.getNameBg(),
-                category.getExternalId());
-
-        // Fetch products for this category
-        List<ExternalProductDto> categoryProducts = valiApiService.getProductsByCategory(category.getExternalId());
-
-        if (categoryProducts.isEmpty()) {
-            log.debug("No products found for category {}", category.getExternalId());
-            return new CategorySyncResult(0, 0, 0, 0);
-        }
-
-        for (ExternalProductDto extProduct : categoryProducts) {
-            try {
-                Optional<Product> existingProduct = productRepository.findByExternalIdWithSessionClear(extProduct.getId());
-
-                if (existingProduct.isPresent()) {
-                    updateProductFromExternal(existingProduct.get(), extProduct, manufacturersMap);
-                    updated++;
-                } else {
-                    createProductFromExternal(extProduct, manufacturersMap);
-                    created++;
-                }
-
-                processed++;
-
-                // Clear session periodically
-                if (processed % 50 == 0) {
-                    entityManager.flush();
-                    entityManager.clear();
-                }
-
-            } catch (Exception e) {
-                errors++;
-                log.error("Error processing product {} from category {}: {}",
-                        extProduct.getId(), category.getExternalId(), e.getMessage());
-                entityManager.clear();
-            }
-        }
-
-        return new CategorySyncResult(processed, created, updated, errors);
-    }
-
-    private static class CategorySyncResult {
-        long processed;
-        long created;
-        long updated;
-        long errors;
-
-        CategorySyncResult(long processed, long created, long updated, long errors) {
-            this.processed = processed;
-            this.created = created;
-            this.updated = updated;
-            this.errors = errors;
-        }
-    }
-
-
-    private void createProductFromExternal(ExternalProductDto extProduct, Map<Long, Manufacturer> manufacturersMap) {
-        Manufacturer manufacturer = manufacturersMap.get(extProduct.getManufacturerId());
-
-        // CHANGE: Don't return early if manufacturer is null, just log a warning
-        if (manufacturer == null) {
-            log.warn("Manufacturer not found for product {}: {}. Creating product without manufacturer.",
-                    extProduct.getId(), extProduct.getManufacturerId());
-            // Continue without manufacturer - set it to null
-            manufacturer = null;
-        }
-
-        Product product = new Product();
-        product.setId(null);
-        updateProductFieldsFromExternal(product, extProduct, manufacturer);
-
-        // Retry logic for database operations
-        int maxRetries = 3;
-        for (int attempt = 1; attempt <= maxRetries; attempt++) {
-            try {
-                product = productRepository.save(product);
-                log.debug("Created product with externalId: {}", extProduct.getId());
-                return;
-            } catch (Exception e) {
-                if (attempt == maxRetries) {
-                    log.error("Failed to create product with externalId {} after {} attempts: {}",
-                            extProduct.getId(), maxRetries, e.getMessage());
-                    throw e;
-                }
-                log.warn("Attempt {} failed for product {}, retrying...", attempt, extProduct.getId());
-                try {
-                    Thread.sleep(1000 * attempt); // Exponential backoff
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    throw new RuntimeException("Interrupted during retry", ie);
-                }
-            }
-        }
-    }
-
-    private void updateProductFromExternal(Product product, ExternalProductDto extProduct, Map<Long, Manufacturer> manufacturersMap) {
-        Manufacturer manufacturer = manufacturersMap.get(extProduct.getManufacturerId());
-
-        // CHANGE: Don't return early if manufacturer is null, just log a warning
-        if (manufacturer == null) {
-            log.warn("Manufacturer not found for product {}: {}. Updating product without manufacturer.",
-                    extProduct.getId(), extProduct.getManufacturerId());
-            // Continue without manufacturer - set it to null
-            manufacturer = null;
-        }
-
-        updateProductFieldsFromExternal(product, extProduct, manufacturer);
-
-        try {
-            productRepository.save(product);
-            log.debug("Updated product with externalId: {}", extProduct.getId());
-        } catch (Exception e) {
-            log.error("Failed to update product with externalId {}: {}", extProduct.getId(), e.getMessage());
-            throw e;
-        }
-    }
-
-    private void updateProductFieldsFromExternal(Product product, ExternalProductDto extProduct, Manufacturer manufacturer) {
-        product.setExternalId(extProduct.getId());
-        product.setWorkflowId(extProduct.getIdWF());
-        product.setReferenceNumber(extProduct.getReferenceNumber());
-        product.setModel(extProduct.getModel());
-        product.setBarcode(extProduct.getBarcode());
-        product.setManufacturer(manufacturer);
-        product.setStatus(ProductStatus.fromCode(extProduct.getStatus()));
-        product.setPriceClient(extProduct.getPriceClient());
-        product.setPricePartner(extProduct.getPricePartner());
-        product.setPricePromo(extProduct.getPricePromo());
-        product.setPriceClientPromo(extProduct.getPriceClientPromo());
-        product.setShow(extProduct.getShow());
-        product.setWarrantyMonths(extProduct.getWarranty());
-        product.setWeight(extProduct.getWeight());
-
-        StringBuilder description = new StringBuilder();
-        for (DescriptionDto descriptionDto : extProduct.getDescription()) {
-            String current = descriptionDto.getText();
-            description.append(current).append(", ");
-        }
-        product.setDescription(description.toString());
-
-        categoryRepository.findByExternalId(extProduct.getCategories().get(0).getId()).ifPresent(product::setCategory);
-
-        if (extProduct.getImages() != null) {
-            List<ImageDto> images = extProduct.getImages();
-
-            if (images != null && !images.isEmpty()) {
-                product.setImageUrl(images.get(0).getHref());
-                List<String> urls = new ArrayList<>();
-                for (int i = 1; i < images.size(); i++) {
-                    urls.add(images.get(i).getHref());
-                }
-                product.setAdditionalImages(urls);
-            }
-        }
-
-        if (extProduct.getName() != null) {
-            extProduct.getName().forEach(name -> {
-                if ("bg".equals(name.getLanguageCode())) {
-                    product.setNameBg(name.getText());
-                } else if ("en".equals(name.getLanguageCode())) {
-                    product.setNameEn(name.getText());
-                }
-            });
-        }
-
-        if (extProduct.getDescription() != null) {
-            extProduct.getDescription().forEach(desc -> {
-                if ("bg".equals(desc.getLanguageCode())) {
-                    product.setDescriptionBg(desc.getText());
-                } else if ("en".equals(desc.getLanguageCode())) {
-                    product.setDescriptionEn(desc.getText());
-                }
-            });
-        }
-
-        // Calculate final price
-        product.calculateFinalPrice();
-    }
-
-    private void createProductRelatedEntities(Product product, ExternalProductDto extProduct) {
-        // This method would create categories, parameters, images, documents, and flags
-        // Implementation would involve complex entity relationships
-        // For brevity, showing the structure but not full implementation
-        log.debug("Creating related entities for product: {}", product.getId());
-    }
-
-    private void updateProductRelatedEntities(Product product, ExternalProductDto extProduct) {
-        // This method would update categories, parameters, images, documents, and flags
-        // Implementation would involve complex entity relationships
-        // For brevity, showing the structure but not full implementation
-        log.debug("Updating related entities for product: {}", product.getId());
-    }
-
-    private String generateSlug(String name) {
-        return name == null ? null :
-                name.toLowerCase()
-                        .replaceAll("[^a-z0-9]+", "-")
-                        .replaceAll("^-|-$", "");
     }
 }

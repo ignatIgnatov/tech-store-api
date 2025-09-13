@@ -13,28 +13,28 @@ public class ExternalProductDto {
     private Long idWF;
     @JsonProperty("reference_number")
     private String referenceNumber;
-    private String model;
-    private String barcode;
-    private List<CategoryIdDto> categories;
     @JsonProperty("manufacturer_id")
     private Long manufacturerId;
-    private String manufacturer;
     private Integer status;
     @JsonProperty("price_client")
     private BigDecimal priceClient;
+    @JsonProperty("price_client_promo")
+    private BigDecimal priceClientPromo;
     @JsonProperty("price_partner")
     private BigDecimal pricePartner;
     @JsonProperty("price_promo")
     private BigDecimal pricePromo;
-    @JsonProperty("price_client_promo")
-    private BigDecimal priceClientPromo;
     private Boolean show;
+    private List<CategoryIdDto> categories;
+    private String model;
+    private String barcode;
     private Integer warranty;
     private BigDecimal weight;
+    private String manufacturer;
     private List<NameDto> name;
     private List<DescriptionDto> description;
-    private List<ExternalParameterValueDto> parameters;
     private List<ImageDto> images;
     private List<DocumentDto> documents;
+    private List<ExternalParameterValueDto> parameters;
     private List<FlagDto> flags;
 }

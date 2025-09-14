@@ -107,8 +107,6 @@ public class CategoryService {
         Category category = new Category();
         category.setNameEn(dto.getName());
         category.setSlug(dto.getSlug());
-        category.setDescription(dto.getDescription());
-        category.setImageUrl(dto.getImageUrl());
         category.setActive(dto.getActive());
         category.setSortOrder(dto.getSortOrder());
 
@@ -124,8 +122,6 @@ public class CategoryService {
     private void updateCategoryFromDTO(Category category, CategoryRequestDTO dto) {
         category.setNameEn(dto.getName());
         category.setSlug(dto.getSlug());
-        category.setDescription(dto.getDescription());
-        category.setImageUrl(dto.getImageUrl());
         category.setActive(dto.getActive());
         category.setSortOrder(dto.getSortOrder());
 
@@ -143,8 +139,6 @@ public class CategoryService {
                 .id(category.getId())
                 .name(category.getNameEn())
                 .slug(category.getSlug())
-                .description(category.getDescription())
-                .imageUrl(category.getImageUrl())
                 .active(category.getActive())
                 .sortOrder(category.getSortOrder())
                 .parent(category.getParent() != null ? convertToSummaryDTO(category.getParent()) : null)

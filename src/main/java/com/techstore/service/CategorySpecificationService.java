@@ -2,18 +2,13 @@ package com.techstore.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.techstore.dto.CategoryFilterDTO;
 import com.techstore.dto.CategorySpecificationTemplateDTO;
-import com.techstore.dto.NumericRange;
-import com.techstore.dto.RangeDTO;
-import com.techstore.dto.SpecificationFilterDTO;
 import com.techstore.entity.Category;
 import com.techstore.entity.CategorySpecificationTemplate;
 import com.techstore.exception.DuplicateResourceException;
 import com.techstore.exception.ResourceNotFoundException;
 import com.techstore.repository.CategoryRepository;
 import com.techstore.repository.CategorySpecificationTemplateRepository;
-import com.techstore.repository.ProductSpecificationRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -31,7 +26,6 @@ public class CategorySpecificationService {
 
     private final CategorySpecificationTemplateRepository templateRepository;
     private final CategoryRepository categoryRepository;
-    private final ProductSpecificationRepository specificationRepository;
     private final ObjectMapper objectMapper;
 
     public CategorySpecificationTemplateDTO createTemplate(CategorySpecificationTemplateDTO dto) {
@@ -54,54 +48,6 @@ public class CategorySpecificationService {
                 .stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
-    }
-
-    public CategoryFilterDTO getCategoryFilters(Long categoryId) {
-        Category category = categoryRepository.findById(categoryId)
-                .orElseThrow(() -> new ResourceNotFoundException("Category not found"));
-
-        List<SpecificationFilterDTO> filters = templateRepository
-                .findByCategoryIdAndFilterableTrueOrderBySortOrderAsc(categoryId)
-                .stream()
-                .map(this::createFilterFromTemplate)
-                .collect(Collectors.toList());
-
-        return CategoryFilterDTO.builder()
-                .categoryId(categoryId)
-                .categoryName(category.getNameEn())
-                .filters(filters)
-                .build();
-    }
-
-    private SpecificationFilterDTO createFilterFromTemplate(CategorySpecificationTemplate template) {
-        SpecificationFilterDTO filter = SpecificationFilterDTO.builder()
-                .templateId(template.getId())
-                .specName(template.getSpecName())
-                .specGroup(template.getSpecGroup())
-                .type(template.getType())
-                .unit(template.getSpecUnit())
-                .build();
-
-        switch (template.getType()) {
-            case DROPDOWN:
-            case MULTI_SELECT:
-                filter.setAvailableValues(parseAllowedValues(template.getAllowedValues()));
-                break;
-            case NUMBER:
-            case DECIMAL:
-                NumericRange range = specificationRepository.findNumericRangeByTemplateId(template.getId());
-                if (range.getMin() != null && range.getMax() != null) {
-                    filter.setNumericRange(RangeDTO.builder()
-                            .min(range.getMin())
-                            .max(range.getMax())
-                            .build());
-                }
-                break;
-            default:
-                filter.setAvailableValues(specificationRepository.findDistinctValuesByTemplateId(template.getId()));
-        }
-
-        return filter;
     }
 
     private List<String> parseAllowedValues(String allowedValuesJson) {

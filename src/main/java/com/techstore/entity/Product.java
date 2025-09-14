@@ -37,6 +37,22 @@ public class Product extends BaseAuditEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @FullTextField
+    @Column(name = "name_bg", columnDefinition = "TEXT")
+    private String nameBg;
+
+    @FullTextField
+    @Column(name = "name_en", columnDefinition = "TEXT")
+    private String nameEn;
+
+    @FullTextField
+    @Column(name = "description_bg", columnDefinition = "TEXT")
+    private String descriptionBg;
+
+    @FullTextField
+    @Column(name = "description_en", columnDefinition = "TEXT")
+    private String descriptionEn;
+
     @Column(name = "external_id", unique = true)
     private Long externalId;
 
@@ -84,86 +100,32 @@ public class Product extends BaseAuditEntity {
     @Column(name = "show_flag")
     private Boolean show = true;
 
-    @Column(name = "warranty_months")
-    private Integer warrantyMonths;
-
-    @Column(unique = true, length = 100)
-    private String sku;
-
-    @Column(columnDefinition = "TEXT")
-    private String description;
-
-    @Column(precision = 10, scale = 2)
-    private BigDecimal price;
+    private Integer warranty;
 
     @Column(precision = 8, scale = 2)
     private BigDecimal discount = BigDecimal.ZERO;
-
-    @Column(name = "discounted_price", precision = 10, scale = 2)
-    private BigDecimal discountedPrice;
-
-    @Column(nullable = false)
-    private Integer stockQuantity = 0;
 
     private Boolean active = true;
 
     private Boolean featured = false;
 
     @Column(name = "image_url", length = 1000)
-    private String imageUrl;
+    private String primaryImageUrl;
 
     @ElementCollection
     @CollectionTable(name = "additional_images", joinColumns = @JoinColumn(name = "product_id"))
     @Column(name = "additional_urls", length = 1000)
     private List<String> additionalImages = new ArrayList<>();
 
-    @Column(length = 100)
-    private String warranty;
-
     @Column(precision = 3, scale = 2)
     private BigDecimal weight;
-
-    @Column(length = 200)
-    private String dimensions;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id")
     private Category category;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "brand_id")
-    private Brand brand;
-
-    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private List<ProductSpecification> specifications = new ArrayList<>();
-
-    @FullTextField
-    @Column(name = "name_bg", columnDefinition = "TEXT")
-    private String nameBg;
-
-    @FullTextField
-    @Column(name = "name_en", columnDefinition = "TEXT")
-    private String nameEn;
-
-    @FullTextField
-    @Column(name = "description_bg", columnDefinition = "TEXT")
-    private String descriptionBg;
-
-    @FullTextField
-    @Column(name = "description_en", columnDefinition = "TEXT")
-    private String descriptionEn;
-
-    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private Set<ProductCategory> productCategories = new HashSet<>();
-
     @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private Set<ProductParameter> productParameters = new HashSet<>();
-
-    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private Set<ProductImage> productImages = new HashSet<>();
-
-    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private Set<ProductDocument> productDocuments = new HashSet<>();
 
     @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private Set<ProductFlag> productFlags = new HashSet<>();
@@ -181,15 +143,7 @@ public class Product extends BaseAuditEntity {
         }
     }
 
-    public BigDecimal getEffectivePrice() {
-        return discountedPrice != null ? discountedPrice : price;
-    }
-
     public boolean isOnSale() {
         return discount != null && discount.compareTo(BigDecimal.ZERO) != 0;
-    }
-
-    public boolean isInStock() {
-        return stockQuantity != null && stockQuantity > 0;
     }
 }

@@ -29,6 +29,12 @@ public class ProductCreateRequestDto {
     @DecimalMin(value = "0.01", message = "Price must be greater than 0")
     private BigDecimal priceClient;
 
+    private BigDecimal pricePartner;
+
+    private BigDecimal pricePromo;
+
+    private BigDecimal priceClientPromo;
+
     @DecimalMin(value = "-100.00", message = "Markup percentage must be greater than -100%")
     @DecimalMax(value = "500.00", message = "Markup percentage must be less than 500%")
     private BigDecimal markupPercentage;

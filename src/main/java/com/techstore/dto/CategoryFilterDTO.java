@@ -20,7 +20,7 @@ public class CategoryFilterDTO {
     private String categoryName;
     private List<SpecificationFilterDTO> filters;
     private PriceRangeDTO priceRange;
-    private List<BrandSummaryDTO> availableBrands;
+    private List<ManufacturerSummaryDto> availableBrands;
 
     // Additional filter options
     private List<FilterOptionDTO> availabilityOptions;

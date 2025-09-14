@@ -19,13 +19,13 @@ public class FilterUtils {
         }
 
         BigDecimal min = products.stream()
-                .map(Product::getDiscountedPrice)
+                .map(Product::getPriceClientPromo)
                 .filter(Objects::nonNull)
                 .min(BigDecimal::compareTo)
                 .orElse(BigDecimal.ZERO);
 
         BigDecimal max = products.stream()
-                .map(Product::getDiscountedPrice)
+                .map(Product::getPriceClientPromo)
                 .filter(Objects::nonNull)
                 .max(BigDecimal::compareTo)
                 .orElse(new BigDecimal("999999"));

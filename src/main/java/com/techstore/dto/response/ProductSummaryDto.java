@@ -15,6 +15,6 @@ public class ProductSummaryDto {
     private BigDecimal finalPrice;
     private ProductStatus status;
     private String statusName;
-    private String primaryImageUrl;
+    private String mainImageUrl;
     private Boolean isFavorite;
 }

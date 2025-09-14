@@ -1,10 +1,10 @@
 package com.techstore.service;
 
-import com.techstore.dto.external.DescriptionDto;
 import com.techstore.dto.external.ExternalCategoryDto;
 import com.techstore.dto.external.ExternalManufacturerDto;
 import com.techstore.dto.external.ExternalParameterDto;
 import com.techstore.dto.external.ExternalParameterOptionDto;
+import com.techstore.dto.external.ExternalParameterValueDto;
 import com.techstore.dto.external.ExternalProductDto;
 import com.techstore.dto.external.ImageDto;
 import com.techstore.entity.Category;
@@ -12,6 +12,7 @@ import com.techstore.entity.Manufacturer;
 import com.techstore.entity.Parameter;
 import com.techstore.entity.ParameterOption;
 import com.techstore.entity.Product;
+import com.techstore.entity.ProductParameter;
 import com.techstore.entity.SyncLog;
 import com.techstore.enums.ProductStatus;
 import com.techstore.exception.ResourceNotFoundException;
@@ -32,7 +33,6 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -430,52 +430,71 @@ public class SyncService {
         product.setPricePromo(extProduct.getPricePromo());
         product.setPriceClientPromo(extProduct.getPriceClientPromo());
         product.setShow(extProduct.getShow());
-        product.setWarrantyMonths(extProduct.getWarranty());
+        product.setWarranty(extProduct.getWarranty());
         product.setWeight(extProduct.getWeight());
 
-        StringBuilder description = new StringBuilder();
-        for (DescriptionDto descriptionDto : extProduct.getDescription()) {
-            String current = descriptionDto.getText();
-            description.append(current).append(", ");
+        setCategoryToProduct(product, extProduct);
+        setImagesToProduct(product, extProduct);
+        setNamesToProduct(product, extProduct);
+        setDescriptionToProduct(product, extProduct);
+        setParametersToProduct(product, extProduct);
+        product.calculateFinalPrice();
+    }
+
+    private void setCategoryToProduct(Product product, ExternalProductDto extProduct) {
+        categoryRepository.findByExternalId(extProduct.getCategories().get(0).getId())
+                .ifPresent(product::setCategory);
+    }
+
+    private static void setImagesToProduct(Product product, ExternalProductDto extProduct) {
+        if (extProduct.getImages() != null && !extProduct.getImages().isEmpty()) {
+            product.setPrimaryImageUrl(extProduct.getImages().get(0).getHref());
+            product.setAdditionalImages(
+                    extProduct.getImages().stream().skip(1).map(ImageDto::getHref).toList()
+            );
         }
-        product.setDescription(description.toString());
+    }
 
-        categoryRepository.findByExternalId(extProduct.getCategories().get(0).getId()).ifPresent(product::setCategory);
-
-        if (extProduct.getImages() != null) {
-            List<ImageDto> images = extProduct.getImages();
-
-            if (images != null && !images.isEmpty()) {
-                product.setImageUrl(images.get(0).getHref());
-                List<String> urls = new ArrayList<>();
-                for (int i = 1; i < images.size(); i++) {
-                    urls.add(images.get(i).getHref());
-                }
-                product.setAdditionalImages(urls);
-            }
-        }
-
+    private static void setNamesToProduct(Product product, ExternalProductDto extProduct) {
         if (extProduct.getName() != null) {
             extProduct.getName().forEach(name -> {
-                if ("bg".equals(name.getLanguageCode())) {
-                    product.setNameBg(name.getText());
-                } else if ("en".equals(name.getLanguageCode())) {
-                    product.setNameEn(name.getText());
+                switch (name.getLanguageCode()) {
+                    case "bg" -> product.setNameBg(name.getText());
+                    case "en" -> product.setNameEn(name.getText());
                 }
             });
         }
+    }
 
+    private static void setDescriptionToProduct(Product product, ExternalProductDto extProduct) {
         if (extProduct.getDescription() != null) {
             extProduct.getDescription().forEach(desc -> {
-                if ("bg".equals(desc.getLanguageCode())) {
-                    product.setDescriptionBg(desc.getText());
-                } else if ("en".equals(desc.getLanguageCode())) {
-                    product.setDescriptionEn(desc.getText());
+                switch (desc.getLanguageCode()) {
+                    case "bg" -> product.setDescriptionBg(desc.getText());
+                    case "en" -> product.setDescriptionEn(desc.getText());
                 }
             });
         }
+    }
 
-        product.calculateFinalPrice();
+    private void setParametersToProduct(Product product, ExternalProductDto extProduct) {
+        if (extProduct.getParameters() != null && product.getCategory() != null) {
+            product.getProductParameters().clear();
+
+            for (ExternalParameterValueDto paramValue : extProduct.getParameters()) {
+                parameterRepository.findByExternalIdAndCategoryId(paramValue.getParameterId(), product.getCategory().getId())
+                        .ifPresent(parameter ->
+                                parameterOptionRepository.findByExternalIdAndParameterId(paramValue.getOptionId(), parameter.getId())
+                                        .ifPresent(option -> {
+                                            ProductParameter pp = new ProductParameter();
+                                            pp.setProduct(product);
+                                            pp.setParameter(parameter);
+                                            pp.setParameterOption(option);
+                                            product.getProductParameters().add(pp);
+                                        })
+                        );
+            }
+        }
     }
 
     private String generateSlug(String name) {

@@ -14,7 +14,7 @@ import java.util.List;
 @AllArgsConstructor
 public class AdvancedFilterRequestDTO {
     private Long categoryId;
-    private Long brandId;
+    private Long manufacturerId;
     private BigDecimal minPrice;
     private BigDecimal maxPrice;
     private Boolean inStockOnly;

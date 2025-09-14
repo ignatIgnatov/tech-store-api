@@ -50,6 +50,12 @@ public class User extends BaseAuditEntity implements UserDetails {
 
     private LocalDateTime lastLoginAt;
 
+    @Column(name = "is_correct", nullable = false)
+    private Boolean isCorrect = true;
+
+    @Column(columnDefinition = "TEXT")
+    private String description;
+
     @Column(name = "preferred_language")
     private String preferredLanguage = "bg";
 

@@ -14,16 +14,18 @@ import java.math.BigDecimal;
 public class ProductSummaryDTO {
     private Long id;
     private String name;
-    private String sku;
-    private BigDecimal price;
+    private String manufacturerName;
+    private BigDecimal priceClient;
+    private BigDecimal pricePartner;
+    private BigDecimal pricePromo;
+    private BigDecimal priceClientPromo;
     private BigDecimal discount;
-    private BigDecimal discountedPrice;
-    private Integer stockQuantity;
     private Boolean active;
     private Boolean featured;
-    private String imageUrl;
+    private String primaryImageUrl;
     private String categoryName;
     private String brandName;
     private Boolean inStock;
     private Boolean onSale;
+    private int status;
 }

@@ -17,10 +17,11 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
     Optional<Category> findByExternalId(Long externalId);
 
     @Query("SELECT DISTINCT c FROM Category c " +
-            "JOIN c.productCategories pc " +
-            "JOIN pc.product p " +
-            "WHERE p.show = true AND p.status != 'NOT_AVAILABLE'")
+            "JOIN c.products p " +
+            "WHERE c.active = true AND c.show = true " +
+            "AND p.show = true AND p.status <> com.techstore.enums.ProductStatus.NOT_AVAILABLE")
     List<Category> findCategoriesWithAvailableProducts();
+
 
     // Find by slug
     Optional<Category> findBySlug(String slug);

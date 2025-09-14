@@ -1,6 +1,7 @@
 package com.techstore.repository;
 
 import com.techstore.entity.Parameter;
+import com.techstore.entity.ParameterOption;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -18,9 +19,17 @@ public interface ParameterRepository extends JpaRepository<Parameter, Long> {
 
     @Query("SELECT DISTINCT p FROM Parameter p " +
             "JOIN p.category c " +
-            "JOIN c.productCategories pc " +
-            "JOIN pc.product prod " +
-            "WHERE c.id = :categoryId AND prod.show = true AND prod.status != 'NOT_AVAILABLE' " +
+            "JOIN c.products prod " +
+            "WHERE c.id = :categoryId " +
+            "AND prod.show = true " +
+            "AND prod.status <> com.techstore.enums.ProductStatus.NOT_AVAILABLE " +
             "ORDER BY p.order ASC")
     List<Parameter> findParametersForAvailableProductsByCategory(@Param("categoryId") Long categoryId);
+
+
+    Optional<Parameter> findByExternalIdAndCategoryId(Long externalId, Long categoryId);
+
+    @Query("SELECT po FROM ParameterOption po WHERE po.externalId = :externalId AND po.parameter.id = :parameterId")
+    Optional<ParameterOption> findByExternalIdAndParameterId(@Param("externalId") Long externalId,
+                                                             @Param("parameterId") Long parameterId);
 }

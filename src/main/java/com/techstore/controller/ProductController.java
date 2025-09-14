@@ -1,9 +1,14 @@
 package com.techstore.controller;
 
-import com.techstore.dto.*;
+import com.techstore.dto.AdvancedFilterRequestDTO;
+import com.techstore.dto.ProductComparisonDTO;
+import com.techstore.dto.ProductRequestDTO;
+import com.techstore.dto.ProductResponseDTO;
+import com.techstore.dto.ProductSummaryDTO;
+import com.techstore.enums.ProductStatus;
 import com.techstore.service.AdvancedFilteringService;
-import com.techstore.service.CategorySpecificationService;
 import com.techstore.service.ProductService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -13,9 +18,17 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
-import jakarta.validation.Valid;
 import java.math.BigDecimal;
 import java.util.List;
 
@@ -28,7 +41,6 @@ public class ProductController {
 
     private final ProductService productService;
     private final AdvancedFilteringService filteringService;
-    private final CategorySpecificationService specificationService;
 
     @PostMapping("/filter/advanced")
     public ResponseEntity<Page<ProductSummaryDTO>> filterProductsAdvanced(
@@ -44,12 +56,6 @@ public class ProductController {
 
         Page<ProductSummaryDTO> products = filteringService.filterProductsAdvanced(filterRequest, pageable);
         return ResponseEntity.ok(products);
-    }
-
-    @GetMapping("/category/{categoryId}/filter-options")
-    public ResponseEntity<CategoryFilterDTO> getCategoryFilterOptions(@PathVariable Long categoryId) {
-        CategoryFilterDTO filterOptions = specificationService.getCategoryFilters(categoryId);
-        return ResponseEntity.ok(filterOptions);
     }
 
     @GetMapping("/compare")
@@ -76,12 +82,6 @@ public class ProductController {
     @GetMapping("/{id}")
     public ResponseEntity<ProductResponseDTO> getProductById(@PathVariable Long id) {
         ProductResponseDTO product = productService.getProductById(id);
-        return ResponseEntity.ok(product);
-    }
-
-    @GetMapping("/sku/{sku}")
-    public ResponseEntity<ProductResponseDTO> getProductBySku(@PathVariable String sku) {
-        ProductResponseDTO product = productService.getProductBySku(sku);
         return ResponseEntity.ok(product);
     }
 
@@ -159,7 +159,7 @@ public class ProductController {
             @RequestParam(required = false) Long brandId,
             @RequestParam(required = false) BigDecimal minPrice,
             @RequestParam(required = false) BigDecimal maxPrice,
-            @RequestParam(required = false) Boolean inStock,
+            @RequestParam(required = false) String status,
             @RequestParam(required = false) Boolean onSale,
             @RequestParam(required = false) String q,
             @RequestParam(defaultValue = "0") int page,
@@ -171,8 +171,10 @@ public class ProductController {
                 Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
         Pageable pageable = PageRequest.of(page, size, sort);
 
+        ProductStatus productStatus = ProductStatus.valueOf(status);
+
         Page<ProductSummaryDTO> products = productService.filterProducts(
-                categoryId, brandId, minPrice, maxPrice, inStock, onSale, q, pageable);
+                categoryId, brandId, minPrice, maxPrice, productStatus, onSale, q, pageable);
         return ResponseEntity.ok(products);
     }
 

@@ -15,9 +15,10 @@ import java.util.Map;
 public class ProductComparisonDTO {
     private Long id;
     private String name;
-    private String sku;
-    private BigDecimal price;
-    private BigDecimal discountedPrice;
+    private String manufacturerName;
+    private BigDecimal priceClient;
+    private BigDecimal pricePromo;
+    private BigDecimal priceClientPromo;
     private String imageUrl;
     private String brandName;
     private Map<String, String> specifications;

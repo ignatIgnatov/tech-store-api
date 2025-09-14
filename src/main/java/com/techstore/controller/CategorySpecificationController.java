@@ -1,6 +1,5 @@
 package com.techstore.controller;
 
-import com.techstore.dto.CategoryFilterDTO;
 import com.techstore.dto.CategorySpecificationTemplateDTO;
 import com.techstore.service.CategorySpecificationService;
 import jakarta.validation.Valid;
@@ -39,11 +38,5 @@ public class CategorySpecificationController {
     public ResponseEntity<List<CategorySpecificationTemplateDTO>> getCategoryTemplates(@PathVariable Long categoryId) {
         List<CategorySpecificationTemplateDTO> templates = specificationService.getCategoryTemplates(categoryId);
         return ResponseEntity.ok(templates);
-    }
-
-    @GetMapping("/category/{categoryId}/filters")
-    public ResponseEntity<CategoryFilterDTO> getCategoryFilters(@PathVariable Long categoryId) {
-        CategoryFilterDTO filters = specificationService.getCategoryFilters(categoryId);
-        return ResponseEntity.ok(filters);
     }
 }

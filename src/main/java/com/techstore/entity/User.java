@@ -1,6 +1,13 @@
 package com.techstore.entity;
 
-import jakarta.persistence.*;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.Table;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import org.springframework.security.core.GrantedAuthority;
@@ -17,11 +24,7 @@ import java.util.Set;
 @Table(name = "users")
 @Data
 @EqualsAndHashCode(callSuper = false)
-public class User extends BaseAuditEntity implements UserDetails {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+public class User extends BaseEntity implements UserDetails {
 
     @Column(unique = true, nullable = false, length = 100)
     private String username;

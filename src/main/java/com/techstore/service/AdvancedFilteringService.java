@@ -3,7 +3,6 @@ package com.techstore.service;
 import com.techstore.dto.AdvancedFilterRequestDTO;
 import com.techstore.dto.ProductSummaryDTO;
 import com.techstore.entity.Product;
-import com.techstore.repository.CategorySpecificationTemplateRepository;
 import com.techstore.repository.ProductRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,7 +25,6 @@ import java.util.Set;
 public class AdvancedFilteringService {
 
     private final ProductRepository productRepository;
-    private final CategorySpecificationTemplateRepository templateRepository;
 
     /**
      * Advanced product filtering with specification-based filters

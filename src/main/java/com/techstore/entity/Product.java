@@ -9,9 +9,6 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
@@ -31,11 +28,7 @@ import java.util.Set;
 @Table(name = "products")
 @Data
 @EqualsAndHashCode(callSuper = false)
-public class Product extends BaseAuditEntity {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+public class Product extends BaseEntity {
 
     @FullTextField
     @Column(name = "name_bg", columnDefinition = "TEXT")

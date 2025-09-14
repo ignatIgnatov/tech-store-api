@@ -1,6 +1,11 @@
 package com.techstore.entity;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.EntityListeners;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.MappedSuperclass;
 import lombok.Data;
 import org.springframework.data.annotation.CreatedBy;
 import org.springframework.data.annotation.CreatedDate;
@@ -13,7 +18,11 @@ import java.time.LocalDateTime;
 @MappedSuperclass
 @Data
 @EntityListeners(AuditingEntityListener.class)
-public abstract class BaseAuditEntity {
+public abstract class BaseEntity {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
     @CreatedDate
     @Column(nullable = false, updatable = false)

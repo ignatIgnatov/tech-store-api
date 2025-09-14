@@ -1,22 +1,17 @@
 package com.techstore.service;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.techstore.dto.CategorySummaryDTO;
 import com.techstore.dto.ManufacturerSummaryDto;
 import com.techstore.dto.ProductRequestDTO;
 import com.techstore.dto.ProductResponseDTO;
-import com.techstore.dto.ProductSpecificationRequestDTO;
 import com.techstore.dto.ProductSummaryDTO;
 import com.techstore.entity.Category;
-import com.techstore.entity.CategorySpecificationTemplate;
 import com.techstore.entity.Manufacturer;
 import com.techstore.entity.Product;
 import com.techstore.enums.ProductStatus;
-import com.techstore.exception.BusinessLogicException;
 import com.techstore.exception.ResourceNotFoundException;
 import com.techstore.repository.CategoryRepository;
-import com.techstore.repository.CategorySpecificationTemplateRepository;
 import com.techstore.repository.ManufacturerRepository;
 import com.techstore.repository.ProductRepository;
 import lombok.RequiredArgsConstructor;
@@ -27,13 +22,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -43,8 +32,6 @@ public class ProductService {
 
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
-    private final CategorySpecificationTemplateRepository templateRepository;
-    private final ObjectMapper objectMapper;
     private final ManufacturerRepository manufacturerRepository;
 
     // ===== READ OPERATIONS =====
@@ -118,39 +105,7 @@ public class ProductService {
     // ===== WRITE OPERATIONS =====
 
     public ProductResponseDTO createProduct(ProductRequestDTO requestDTO) {
-        log.info("Creating product with specification validation: {}", requestDTO.getSku());
-
-        // Get category templates for validation
-        List<CategorySpecificationTemplate> requiredTemplates =
-                templateRepository.findByCategoryIdAndRequiredTrueOrderBySortOrderAsc(requestDTO.getCategoryId());
-
-        // Validate required specifications are provided
-        validateRequiredSpecifications(requestDTO.getSpecifications(), requiredTemplates);
-
-        // Create product
-        Product product = convertToEntity(requestDTO);
-        product = productRepository.save(product);
-
-        log.info("Product created successfully with id: {}", product.getId());
-        return convertToResponseDTO(product);
-    }
-
-    private void validateRequiredSpecifications(List<ProductSpecificationRequestDTO> specs,
-                                                List<CategorySpecificationTemplate> requiredTemplates) {
-        if (specs == null) specs = Collections.emptyList();
-
-        Set<String> providedSpecs = specs.stream()
-                .map(ProductSpecificationRequestDTO::getSpecName)
-                .collect(Collectors.toSet());
-
-        List<String> missingSpecs = requiredTemplates.stream()
-                .map(CategorySpecificationTemplate::getSpecName)
-                .filter(specName -> !providedSpecs.contains(specName))
-                .collect(Collectors.toList());
-
-        if (!missingSpecs.isEmpty()) {
-            throw new BusinessLogicException("Missing required specifications: " + String.join(", ", missingSpecs));
-        }
+        return null;
     }
 
     public ProductResponseDTO updateProduct(Long id, ProductRequestDTO requestDTO) {
@@ -188,108 +143,6 @@ public class ProductService {
 
         productRepository.deleteById(id);
         log.info("Product permanently deleted successfully with id: {}", id);
-    }
-
-    private void validateSpecificationValue(String value, CategorySpecificationTemplate template) {
-        if (value == null || value.trim().isEmpty()) {
-            throw new BusinessLogicException("Specification value cannot be empty for " + template.getSpecName());
-        }
-
-        switch (template.getType()) {
-            case NUMBER:
-                try {
-                    Integer.parseInt(value);
-                } catch (NumberFormatException e) {
-                    throw new BusinessLogicException("Invalid number value for " + template.getSpecName() + ": " + value);
-                }
-                break;
-
-            case DECIMAL:
-                try {
-                    new BigDecimal(value);
-                } catch (NumberFormatException e) {
-                    throw new BusinessLogicException("Invalid decimal value for " + template.getSpecName() + ": " + value);
-                }
-                break;
-
-            case BOOLEAN:
-                if (!Arrays.asList("true", "false", "yes", "no", "1", "0").contains(value.toLowerCase())) {
-                    throw new BusinessLogicException("Invalid boolean value for " + template.getSpecName() +
-                            ". Must be: true/false, yes/no, or 1/0");
-                }
-                break;
-
-            case DROPDOWN:
-            case MULTI_SELECT:
-                if (template.getAllowedValues() != null) {
-                    List<String> allowedValues = parseAllowedValues(template.getAllowedValues());
-                    if (!allowedValues.contains(value)) {
-                        throw new BusinessLogicException("Invalid value for " + template.getSpecName() +
-                                ". Allowed values: " + String.join(", ", allowedValues));
-                    }
-                }
-                break;
-
-            case EMAIL:
-                if (!value.matches("^[A-Za-z0-9+_.-]+@(.+)$")) {
-                    throw new BusinessLogicException("Invalid email format for " + template.getSpecName());
-                }
-                break;
-
-            case URL:
-                try {
-                    new URL(value);
-                } catch (MalformedURLException e) {
-                    throw new BusinessLogicException("Invalid URL format for " + template.getSpecName());
-                }
-                break;
-
-            case COLOR:
-                if (!value.matches("^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$")) {
-                    throw new BusinessLogicException("Invalid color format for " + template.getSpecName() +
-                            ". Use hex format like #FF0000");
-                }
-                break;
-
-            // TEXT and other types - no specific validation needed
-            default:
-                break;
-        }
-    }
-
-    private List<String> parseAllowedValues(String allowedValuesJson) {
-        try {
-            return objectMapper.readValue(allowedValuesJson, new TypeReference<List<String>>() {
-            });
-        } catch (Exception e) {
-            log.warn("Failed to parse allowed values: {}", allowedValuesJson);
-            return Collections.emptyList();
-        }
-    }
-
-    private Product convertToEntity(ProductRequestDTO dto) {
-        Category category = categoryRepository.findById(dto.getCategoryId())
-                .orElseThrow(() -> new ResourceNotFoundException("Category not found with id: " + dto.getCategoryId()));
-
-        Manufacturer manufacturer = manufacturerRepository.findById(dto.getManufacturerId())
-                .orElseThrow(() -> new ResourceNotFoundException("Brand not found with id: " + dto.getManufacturerId()));
-
-        Product product = new Product();
-        product.setNameEn(dto.getName());
-        product.setDescriptionEn(dto.getDescriptionEn());
-        product.setDescriptionBg(dto.getDescriptionBg());
-        product.setPriceClient(dto.getPriceClient());
-        product.setDiscount(dto.getDiscount());
-        product.setActive(dto.getActive());
-        product.setFeatured(dto.getFeatured());
-        product.setPrimaryImageUrl(dto.getImageUrl());
-        product.setAdditionalImages(dto.getAdditionalImages());
-        product.setWarranty(Integer.parseInt(dto.getWarranty()));
-        product.setWeight(dto.getWeight());
-        product.setCategory(category);
-        product.setManufacturer(manufacturer);
-
-        return product;
     }
 
     private void updateProductFromDTO(Product product, ProductRequestDTO dto) {

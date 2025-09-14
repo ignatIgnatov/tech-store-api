@@ -1,7 +1,7 @@
 package com.techstore.service;
 
-import com.techstore.dto.CategorySummaryDTO;
-import com.techstore.dto.ManufacturerSummaryDto;
+import com.techstore.dto.response.CategorySummaryDTO;
+import com.techstore.dto.response.ManufacturerSummaryDto;
 import com.techstore.dto.ProductRequestDTO;
 import com.techstore.dto.ProductResponseDTO;
 import com.techstore.dto.ProductSummaryDTO;
@@ -184,10 +184,10 @@ public class ProductService {
                 .build();
     }
 
-    private ManufacturerSummaryDto convertToManufacturerSummary(Manufacturer brand) {
+    private ManufacturerSummaryDto convertToManufacturerSummary(Manufacturer manufacturer) {
         return ManufacturerSummaryDto.builder()
-                .id(brand.getId())
-                .name(brand.getName())
+                .id(manufacturer.getId())
+                .name(manufacturer.getName())
                 .build();
     }
 }

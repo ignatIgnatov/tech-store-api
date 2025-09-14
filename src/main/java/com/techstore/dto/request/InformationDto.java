@@ -1,9 +1,9 @@
-package com.techstore.dto.external;
+package com.techstore.dto.request;
 
 import lombok.Data;
 
 @Data
-public class EuRepresentativeDto {
+public class InformationDto {
     private String name;
     private String email;
     private String address;

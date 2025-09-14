@@ -1,10 +1,10 @@
-package com.techstore.dto.external;
+package com.techstore.dto.request;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
 @Data
-public class ExternalManufacturerDto {
+public class ManufacturerRequestDto {
     private Long id;
     private String name;
     private InformationDto information;

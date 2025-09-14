@@ -1,4 +1,4 @@
-package com.techstore.dto;
+package com.techstore.dto.response;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -9,10 +9,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class CategorySummaryDTO {
+public class ManufacturerSummaryDto {
     private Long id;
-    private String nameEn;
-    private String nameBg;
-    private String slug;
-    private Boolean show;
+    private String name;
 }

@@ -1,5 +1,6 @@
 package com.techstore.dto.response;
 
+import com.techstore.dto.CategoryResponseDTO;
 import com.techstore.enums.ProductStatus;
 import lombok.Data;
 
@@ -24,7 +25,7 @@ public class ProductResponseDto {
     private BigDecimal finalPrice;
     private Integer warrantyMonths;
     private BigDecimal weight;
-    private List<CategoryResponseDto> categories;
+    private List<CategoryResponseDTO> categories;
     private List<ProductParameterResponseDto> parameters;
     private List<ProductImageResponseDto> images;
     private List<ProductDocumentResponseDto> documents;

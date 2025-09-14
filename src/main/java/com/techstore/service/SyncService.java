@@ -1,7 +1,7 @@
 package com.techstore.service;
 
 import com.techstore.dto.request.CategoryRequestDto;
-import com.techstore.dto.external.ExternalManufacturerDto;
+import com.techstore.dto.request.ManufacturerRequestDto;
 import com.techstore.dto.external.ExternalParameterDto;
 import com.techstore.dto.external.ExternalParameterOptionDto;
 import com.techstore.dto.external.ExternalParameterValueDto;
@@ -145,14 +145,14 @@ public class SyncService {
         try {
             log.info("Starting manufacturers synchronization");
 
-            List<ExternalManufacturerDto> externalManufacturers = valiApiService.getManufacturers();
+            List<ManufacturerRequestDto> externalManufacturers = valiApiService.getManufacturers();
             Map<Long, Manufacturer> existingManufacturers = manufacturerRepository.findAll()
                     .stream()
                     .collect(Collectors.toMap(Manufacturer::getExternalId, m -> m));
 
             long created = 0, updated = 0;
 
-            for (ExternalManufacturerDto extManufacturer : externalManufacturers) {
+            for (ManufacturerRequestDto extManufacturer : externalManufacturers) {
                 Manufacturer manufacturer = existingManufacturers.get(extManufacturer.getId());
 
                 if (manufacturer == null) {
@@ -588,7 +588,7 @@ public class SyncService {
         }
     }
 
-    private Manufacturer createManufacturerFromExternal(ExternalManufacturerDto extManufacturer) {
+    private Manufacturer createManufacturerFromExternal(ManufacturerRequestDto extManufacturer) {
         Manufacturer manufacturer = new Manufacturer();
         manufacturer.setExternalId(extManufacturer.getId());
         manufacturer.setName(extManufacturer.getName());
@@ -608,7 +608,7 @@ public class SyncService {
         return manufacturer;
     }
 
-    private void updateManufacturerFromExternal(Manufacturer manufacturer, ExternalManufacturerDto extManufacturer) {
+    private void updateManufacturerFromExternal(Manufacturer manufacturer, ManufacturerRequestDto extManufacturer) {
         manufacturer.setName(extManufacturer.getName());
 
         if (extManufacturer.getInformation() != null) {

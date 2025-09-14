@@ -1,7 +1,9 @@
 package com.techstore.service;
 
+import com.techstore.dto.request.ManufacturerRequestDto;
 import com.techstore.dto.response.ManufacturerResponseDto;
 import com.techstore.entity.Manufacturer;
+import com.techstore.exception.DuplicateResourceException;
 import com.techstore.exception.ResourceNotFoundException;
 import com.techstore.mapper.ManufacturerMapper;
 import com.techstore.repository.ManufacturerRepository;
@@ -36,11 +38,64 @@ public class ManufacturerService {
         return manufacturerMapper.toResponseDto(manufacturer);
     }
 
-    @Cacheable(value = "manufacturers", key = "'with_products'")
-    public List<ManufacturerResponseDto> getManufacturersWithProducts(String language) {
-        List<Manufacturer> manufacturers = manufacturerRepository.findManufacturersWithAvailableProducts();
-        return manufacturers.stream()
-                .map(manufacturerMapper::toResponseDto)
-                .toList();
+    public ManufacturerResponseDto createManufacturer(ManufacturerRequestDto requestDto) {
+
+        if (manufacturerRepository.existsByNameIgnoreCase(requestDto.getName())) {
+            throw new DuplicateResourceException("Manufacturer already exists with name " + requestDto.getName());
+        }
+
+        Manufacturer manufacturer = new Manufacturer();
+
+        manufacturer.setName(requestDto.getName());
+
+        if (requestDto.getInformation() != null) {
+            manufacturer.setInformationName(requestDto.getInformation().getName());
+            manufacturer.setInformationEmail(requestDto.getInformation().getEmail());
+            manufacturer.setInformationAddress(requestDto.getInformation().getAddress());
+        }
+
+        if (requestDto.getEuRepresentative() != null) {
+            manufacturer.setEuRepresentativeName(requestDto.getEuRepresentative().getName());
+            manufacturer.setEuRepresentativeEmail(requestDto.getEuRepresentative().getEmail());
+            manufacturer.setEuRepresentativeAddress(requestDto.getEuRepresentative().getAddress());
+        }
+
+        manufacturerRepository.save(manufacturer);
+
+        return manufacturerMapper.toResponseDto(manufacturer);
+    }
+
+    public ManufacturerResponseDto updateManufacturer(Long id, ManufacturerRequestDto requestDto) {
+        Manufacturer manufacturer = findById(id);
+
+        manufacturer.setName(requestDto.getName());
+
+        if (requestDto.getInformation() != null) {
+            manufacturer.setInformationName(requestDto.getInformation().getName());
+            manufacturer.setInformationEmail(requestDto.getInformation().getEmail());
+            manufacturer.setInformationAddress(requestDto.getInformation().getAddress());
+        }
+
+        if (requestDto.getEuRepresentative() != null) {
+            manufacturer.setEuRepresentativeName(requestDto.getEuRepresentative().getName());
+            manufacturer.setEuRepresentativeEmail(requestDto.getEuRepresentative().getEmail());
+            manufacturer.setEuRepresentativeAddress(requestDto.getEuRepresentative().getAddress());
+        }
+
+        manufacturerRepository.save(manufacturer);
+        return manufacturerMapper.toResponseDto(manufacturer);
+    }
+
+    public void deleteManufacturer(Long id) {
+        if (!manufacturerRepository.existsById(id)) {
+            throw new ResourceNotFoundException("Manufacturer with id " + id + " not found");
+        }
+        manufacturerRepository.deleteById(id);
+    }
+
+    private Manufacturer findById(Long id) {
+        return manufacturerRepository.findById(id).orElseThrow(
+                () -> new ResourceNotFoundException("Manufacturer not found with Id: " + id)
+        );
     }
 }

@@ -1,7 +1,7 @@
 package com.techstore.service;
 
 import com.techstore.dto.request.CategoryRequestDto;
-import com.techstore.dto.external.ExternalManufacturerDto;
+import com.techstore.dto.request.ManufacturerRequestDto;
 import com.techstore.dto.external.ExternalParameterDto;
 import com.techstore.dto.external.ExternalProductDto;
 import lombok.RequiredArgsConstructor;
@@ -61,7 +61,7 @@ public class ValiApiService {
                 .block();
     }
 
-    public List<ExternalManufacturerDto> getManufacturers() {
+    public List<ManufacturerRequestDto> getManufacturers() {
         log.debug("Fetching manufacturers from external API");
 
         return webClient.get()
@@ -69,7 +69,7 @@ public class ValiApiService {
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiToken)
                 .header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
                 .retrieve()
-                .bodyToMono(new ParameterizedTypeReference<List<ExternalManufacturerDto>>() {
+                .bodyToMono(new ParameterizedTypeReference<List<ManufacturerRequestDto>>() {
                 })
                 .timeout(Duration.ofMillis(timeout))
                 .retryWhen(Retry.backoff(retryAttempts, Duration.ofMillis(retryDelay)))

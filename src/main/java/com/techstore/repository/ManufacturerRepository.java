@@ -11,7 +11,9 @@ import java.util.Optional;
 @Repository
 public interface ManufacturerRepository extends JpaRepository<Manufacturer, Long> {
 
-    Optional<Manufacturer> findByExternalId(Long externalId);
+    Optional<Manufacturer> findByName(String name);
+
+    boolean existsByNameIgnoreCase(String name);
 
     List<Manufacturer> findAllByOrderByNameAsc();
 

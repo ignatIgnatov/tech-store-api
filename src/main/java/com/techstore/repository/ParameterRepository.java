@@ -1,5 +1,6 @@
 package com.techstore.repository;
 
+import com.techstore.entity.Category;
 import com.techstore.entity.Parameter;
 import com.techstore.entity.ParameterOption;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -14,6 +15,9 @@ import java.util.Optional;
 public interface ParameterRepository extends JpaRepository<Parameter, Long> {
 
     Optional<Parameter> findByExternalId(Long externalId);
+
+    boolean existsByNameBgIgnoreCaseAndCategory(String nameBg, Category category);
+    boolean existsByNameEnIgnoreCaseAndCategory(String nameEn, Category category);
 
     List<Parameter> findByCategoryIdOrderByOrderAsc(Long categoryId);
 

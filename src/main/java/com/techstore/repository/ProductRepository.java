@@ -18,6 +18,8 @@ import java.util.Optional;
 @Repository
 public interface ProductRepository extends JpaRepository<Product, Long> {
 
+    boolean existsByReferenceNumberIgnoreCase(String referenceNumber);
+
     @Query("SELECT p FROM Product p WHERE p.externalId = :externalId")
     @QueryHints(@QueryHint(name = org.hibernate.annotations.QueryHints.FLUSH_MODE, value = "ALWAYS"))
     Optional<Product> findByExternalIdWithSessionClear(@Param("externalId") Long externalId);

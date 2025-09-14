@@ -39,14 +39,14 @@ public class ManufacturerController {
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
+//    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
     public ResponseEntity<ManufacturerResponseDto> create(@RequestBody ManufacturerRequestDto requestDto) {
         ManufacturerResponseDto responseDto = manufacturerService.createManufacturer(requestDto);
         return ResponseEntity.ok(responseDto);
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
+//    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
     public ResponseEntity<ManufacturerResponseDto> update(
             @PathVariable Long id,
             @RequestBody ManufacturerRequestDto requestDto
@@ -56,7 +56,7 @@ public class ManufacturerController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
+//    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         manufacturerService.deleteManufacturer(id);
         return ResponseEntity.noContent().build();

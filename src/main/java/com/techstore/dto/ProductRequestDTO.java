@@ -58,6 +58,4 @@ public class ProductRequestDTO {
 
     @NotNull(message = "Manufacturer ID is required")
     private Long manufacturerId;
-
-    private List<ProductSpecificationRequestDTO> specifications;
 }

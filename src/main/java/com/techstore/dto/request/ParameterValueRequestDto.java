@@ -1,12 +1,13 @@
-package com.techstore.dto.external;
+package com.techstore.dto.request;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.techstore.dto.external.NameDto;
 import lombok.Data;
 
 import java.util.List;
 
 @Data
-public class ExternalParameterValueDto {
+public class ParameterValueRequestDto {
     @JsonProperty("parameter_id")
     private Long parameterId;
     @JsonProperty("parameter_name")

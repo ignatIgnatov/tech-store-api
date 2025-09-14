@@ -1,14 +1,15 @@
 package com.techstore.service;
 
+import com.techstore.dto.ProductResponseDTO;
+import com.techstore.dto.external.ExternalProductDto;
+import com.techstore.dto.external.ImageDto;
 import com.techstore.dto.response.CategorySummaryDTO;
 import com.techstore.dto.response.ManufacturerSummaryDto;
-import com.techstore.dto.ProductRequestDTO;
-import com.techstore.dto.ProductResponseDTO;
-import com.techstore.dto.ProductSummaryDTO;
 import com.techstore.entity.Category;
 import com.techstore.entity.Manufacturer;
 import com.techstore.entity.Product;
 import com.techstore.enums.ProductStatus;
+import com.techstore.exception.DuplicateResourceException;
 import com.techstore.exception.ResourceNotFoundException;
 import com.techstore.repository.CategoryRepository;
 import com.techstore.repository.ManufacturerRepository;
@@ -34,9 +35,9 @@ public class ProductService {
     private final ManufacturerRepository manufacturerRepository;
 
     @Transactional(readOnly = true)
-    public Page<ProductSummaryDTO> getAllProducts(Pageable pageable) {
+    public Page<ProductResponseDTO> getAllProducts(Pageable pageable) {
         return productRepository.findByActiveTrue(pageable)
-                .map(this::convertToSummaryDTO);
+                .map(this::convertToResponseDTO);
     }
 
     @Transactional(readOnly = true)
@@ -47,47 +48,47 @@ public class ProductService {
     }
 
     @Transactional(readOnly = true)
-    public Page<ProductSummaryDTO> getProductsByCategory(Long categoryId, Pageable pageable) {
+    public Page<ProductResponseDTO> getProductsByCategory(Long categoryId, Pageable pageable) {
         return productRepository.findByActiveTrueAndCategoryId(categoryId, pageable)
-                .map(this::convertToSummaryDTO);
+                .map(this::convertToResponseDTO);
     }
 
     @Transactional(readOnly = true)
-    public Page<ProductSummaryDTO> getProductsByBrand(Long brandId, Pageable pageable) {
+    public Page<ProductResponseDTO> getProductsByBrand(Long brandId, Pageable pageable) {
         return productRepository.findByActiveTrueAndManufacturerId(brandId, pageable)
-                .map(this::convertToSummaryDTO);
+                .map(this::convertToResponseDTO);
     }
 
     @Transactional(readOnly = true)
-    public Page<ProductSummaryDTO> getFeaturedProducts(Pageable pageable) {
+    public Page<ProductResponseDTO> getFeaturedProducts(Pageable pageable) {
         return productRepository.findByActiveTrueAndFeaturedTrue(pageable)
-                .map(this::convertToSummaryDTO);
+                .map(this::convertToResponseDTO);
     }
 
     @Transactional(readOnly = true)
-    public Page<ProductSummaryDTO> getProductsOnSale(Pageable pageable) {
+    public Page<ProductResponseDTO> getProductsOnSale(Pageable pageable) {
         return productRepository.findProductsOnSale(pageable)
-                .map(this::convertToSummaryDTO);
+                .map(this::convertToResponseDTO);
     }
 
     @Transactional(readOnly = true)
-    public Page<ProductSummaryDTO> searchProducts(String query, Pageable pageable) {
+    public Page<ProductResponseDTO> searchProducts(String query, Pageable pageable) {
         return productRepository.searchProducts(query, pageable)
-                .map(this::convertToSummaryDTO);
+                .map(this::convertToResponseDTO);
     }
 
     @Transactional(readOnly = true)
-    public Page<ProductSummaryDTO> filterProducts(Long categoryId, Long brandId,
-                                                  BigDecimal minPrice, BigDecimal maxPrice,
-                                                  ProductStatus status, Boolean onSale, String query,
-                                                  Pageable pageable) {
+    public Page<ProductResponseDTO> filterProducts(Long categoryId, Long brandId,
+                                                   BigDecimal minPrice, BigDecimal maxPrice,
+                                                   ProductStatus status, Boolean onSale, String query,
+                                                   Pageable pageable) {
         return productRepository.findProductsWithFilters(categoryId, brandId, minPrice, maxPrice,
                         status, onSale, query, pageable)
-                .map(this::convertToSummaryDTO);
+                .map(this::convertToResponseDTO);
     }
 
     @Transactional(readOnly = true)
-    public List<ProductSummaryDTO> getRelatedProducts(Long productId, int limit) {
+    public List<ProductResponseDTO> getRelatedProducts(Long productId, int limit) {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
 
@@ -95,15 +96,99 @@ public class ProductService {
         return productRepository.findRelatedProducts(productId, product.getCategory().getId(),
                         product.getManufacturer().getId(), pageable)
                 .stream()
-                .map(this::convertToSummaryDTO)
+                .map(this::convertToResponseDTO)
                 .toList();
     }
 
-    public ProductResponseDTO createProduct(ProductRequestDTO requestDTO) {
-        return null;
+    @Transactional
+    public ProductResponseDTO createProduct(ExternalProductDto dto) {
+        if (productRepository.existsByReferenceNumberIgnoreCase(dto.getReferenceNumber())) {
+            throw new DuplicateResourceException("Product with already exists with ref. number " + dto.getReferenceNumber());
+        }
+        Product product = new Product();
+
+        updateProductFieldsFromExternal(product, dto);
+
+        productRepository.save(product);
+
+        return convertToResponseDTO(product);
+
     }
 
-    public ProductResponseDTO updateProduct(Long id, ProductRequestDTO requestDTO) {
+    private void updateProductFieldsFromExternal(Product product, ExternalProductDto dto) {
+        setNamesToProduct(product, dto);
+        setDescriptionToProduct(product, dto);
+        product.setReferenceNumber(dto.getReferenceNumber());
+        product.setModel(dto.getModel());
+        product.setBarcode(dto.getBarcode());
+        product.setExternalId(dto.getId());
+        product.setWorkflowId(dto.getIdWF());
+
+        setCategoryToProduct(product, dto);
+        setManufacturer(product, dto);
+
+        product.setStatus(ProductStatus.fromCode(dto.getStatus()));
+        product.setPriceClient(dto.getPriceClient());
+        product.setPricePartner(dto.getPricePartner());
+        product.setPricePromo(dto.getPricePromo());
+        product.setPriceClientPromo(dto.getPriceClientPromo());
+        product.setMarkupPercentage(dto.getMarkupPercentage());
+        product.calculateFinalPrice();
+
+        setImagesToProduct(product, dto);
+    }
+
+    private void setManufacturer(Product product, ExternalProductDto dto) {
+        Manufacturer manufacturer = manufacturerRepository.findById(dto.getManufacturerId())
+                .orElseThrow(() -> new ResourceNotFoundException("Manufacturer not found: " + dto.getManufacturerId()));
+        product.setManufacturer(manufacturer);
+    }
+
+    private static void setImagesToProduct(Product product, ExternalProductDto extProduct) {
+        if (extProduct.getImages() != null && !extProduct.getImages().isEmpty()) {
+            product.setPrimaryImageUrl(extProduct.getImages().get(0).getHref());
+            product.setAdditionalImages(
+                    extProduct.getImages().stream().skip(1).map(ImageDto::getHref).toList()
+            );
+        }
+    }
+
+    private void setCategoryToProduct(Product product, ExternalProductDto extProduct) {
+        categoryRepository.findByExternalId(extProduct.getCategories().get(0).getId())
+                .ifPresent(product::setCategory);
+    }
+
+    private static void setDescriptionToProduct(Product product, ExternalProductDto extProduct) {
+        if (extProduct.getDescription() != null) {
+            extProduct.getDescription().forEach(desc -> {
+                switch (desc.getLanguageCode()) {
+                    case "bg" -> product.setDescriptionBg(desc.getText());
+                    case "en" -> product.setDescriptionEn(desc.getText());
+                }
+            });
+        }
+    }
+
+    private static void setNamesToProduct(Product product, ExternalProductDto extProduct) {
+        if (extProduct.getName() != null) {
+            extProduct.getName().forEach(name -> {
+                switch (name.getLanguageCode()) {
+                    case "bg" -> product.setNameBg(name.getText());
+                    case "en" -> product.setNameEn(name.getText());
+                }
+            });
+        }
+    }
+
+    public ProductResponseDTO updateProduct(Long id, ExternalProductDto requestDTO) {
+        Product product = productRepository.findById(id).orElseThrow(
+                () -> new ResourceNotFoundException("Product not found with id " + id)
+        );
+
+        updateProductFieldsFromExternal(product, requestDTO);
+
+        productRepository.save(product);
+
         return null;
     }
 
@@ -131,47 +216,52 @@ public class ProductService {
     }
 
     private ProductResponseDTO convertToResponseDTO(Product product) {
-        return ProductResponseDTO.builder()
-                .id(product.getId())
-                .name(product.getNameEn())
-                .descriptionBg(product.getDescriptionBg())
-                .descriptionEn(product.getDescriptionEn())
-                .priceClient(product.getPriceClient())
-                .pricePartner(product.getPricePartner())
-                .discount(product.getDiscount())
-                .pricePromo(product.getPricePromo())
-                .active(product.getActive())
-                .featured(product.getFeatured())
-                .primaryImageUrl(product.getPrimaryImageUrl())
-                .additionalImages(product.getAdditionalImages())
-                .warranty(product.getWarranty())
-                .weight(product.getWeight())
-                .category(convertToCategorySummary(product.getCategory()))
-                .manufacturer(convertToManufacturerSummary(product.getManufacturer()))
-                .createdAt(product.getCreatedAt())
-                .updatedAt(product.getUpdatedAt())
-                .onSale(product.isOnSale())
-                .status(product.getStatus().getCode())
-                .build();
-    }
+        ProductResponseDTO dto = new ProductResponseDTO();
 
-    private ProductSummaryDTO convertToSummaryDTO(Product product) {
-        return ProductSummaryDTO.builder()
-                .id(product.getId())
-                .name(product.getNameEn())
-                .manufacturerName(product.getManufacturer().getName())
-                .priceClient(product.getPriceClient())
-                .pricePartner(product.getPricePartner())
-                .pricePromo(product.getPricePromo())
-                .priceClientPromo(product.getPriceClientPromo())
-                .discount(product.getDiscount())
-                .active(product.getActive())
-                .featured(product.getFeatured())
-                .primaryImageUrl(product.getPrimaryImageUrl())
-                .categoryName(product.getCategory().getNameEn())
-                .onSale(product.isOnSale())
-                .status(product.getStatus().getCode())
-                .build();
+        dto.setId(product.getId());
+        dto.setNameEn(product.getNameEn());
+        dto.setNameBg(product.getNameBg());
+        dto.setDescriptionEn(product.getDescriptionEn());
+        dto.setDescriptionBg(product.getDescriptionBg());
+
+        dto.setReferenceNumber(product.getReferenceNumber());
+        dto.setModel(product.getModel());
+        dto.setBarcode(product.getBarcode());
+
+        dto.setPriceClient(product.getPriceClient());
+        dto.setPricePartner(product.getPricePartner());
+        dto.setPricePromo(product.getPricePromo());
+        dto.setPriceClientPromo(product.getPriceClientPromo());
+        dto.setMarkupPercentage(product.getMarkupPercentage());
+        dto.setFinalPrice(product.getFinalPrice());
+        dto.setDiscount(product.getDiscount());
+
+        dto.setActive(product.getActive());
+        dto.setFeatured(product.getFeatured());
+        dto.setShow(product.getShow());
+
+        dto.setPrimaryImageUrl(product.getPrimaryImageUrl());
+        dto.setAdditionalImages(product.getAdditionalImages());
+
+        dto.setWarranty(product.getWarranty());
+        dto.setWeight(product.getWeight());
+        dto.setSpecifications(product.getProductParameters().stream().toList());
+
+        if (product.getCategory() != null) {
+            dto.setCategory(convertToCategorySummary(product.getCategory()));
+        }
+
+        if (product.getManufacturer() != null) {
+            dto.setManufacturer(convertToManufacturerSummary(product.getManufacturer()));
+        }
+
+        dto.setCreatedAt(product.getCreatedAt());
+        dto.setUpdatedAt(product.getUpdatedAt());
+        dto.setOnSale(product.isOnSale());
+        dto.setStatus(product.getStatus() != null ? product.getStatus().getCode() : 0);
+        dto.setWorkflowId(product.getWorkflowId());
+
+        return dto;
     }
 
     private CategorySummaryDTO convertToCategorySummary(Category category) {

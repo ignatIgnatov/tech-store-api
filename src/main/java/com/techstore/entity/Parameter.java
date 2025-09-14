@@ -45,6 +45,6 @@ public class Parameter extends BaseEntity {
     @Column(name = "sort_order")
     private Integer order;
 
-    @OneToMany(mappedBy = "parameter", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @OneToMany(mappedBy = "parameter", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
     private Set<ParameterOption> options = new HashSet<>();
 }

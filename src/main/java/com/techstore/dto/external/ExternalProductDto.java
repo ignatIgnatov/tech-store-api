@@ -1,6 +1,7 @@
 package com.techstore.dto.external;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.techstore.dto.request.ParameterValueRequestDto;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -35,6 +36,7 @@ public class ExternalProductDto {
     private List<DescriptionDto> description;
     private List<ImageDto> images;
     private List<DocumentDto> documents;
-    private List<ExternalParameterValueDto> parameters;
+    private List<ParameterValueRequestDto> parameters;
     private List<FlagDto> flags;
+    private BigDecimal markupPercentage;
 }

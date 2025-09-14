@@ -2,9 +2,9 @@ package com.techstore.service;
 
 import com.techstore.dto.request.CategoryRequestDto;
 import com.techstore.dto.request.ManufacturerRequestDto;
-import com.techstore.dto.external.ExternalParameterDto;
-import com.techstore.dto.external.ExternalParameterOptionDto;
-import com.techstore.dto.external.ExternalParameterValueDto;
+import com.techstore.dto.request.ParameterRequestDto;
+import com.techstore.dto.request.ParameterOptionRequestDto;
+import com.techstore.dto.request.ParameterValueRequestDto;
 import com.techstore.dto.external.ExternalProductDto;
 import com.techstore.dto.external.ImageDto;
 import com.techstore.entity.Category;
@@ -196,14 +196,14 @@ public class SyncService {
             long totalProcessed = 0, created = 0, updated = 0;
 
             for (Category category : categories) {
-                List<ExternalParameterDto> externalParameters = valiApiService.getParametersByCategory(category.getExternalId());
+                List<ParameterRequestDto> externalParameters = valiApiService.getParametersByCategory(category.getExternalId());
 
                 Map<Long, Parameter> existingParameters = parameterRepository
                         .findByCategoryIdOrderByOrderAsc(category.getId())
                         .stream()
                         .collect(Collectors.toMap(Parameter::getExternalId, p -> p));
 
-                for (ExternalParameterDto extParameter : externalParameters) {
+                for (ParameterRequestDto extParameter : externalParameters) {
                     Parameter parameter = existingParameters.get(extParameter.getId());
 
                     if (parameter == null) {
@@ -481,7 +481,7 @@ public class SyncService {
         if (extProduct.getParameters() != null && product.getCategory() != null) {
             product.getProductParameters().clear();
 
-            for (ExternalParameterValueDto paramValue : extProduct.getParameters()) {
+            for (ParameterValueRequestDto paramValue : extProduct.getParameters()) {
                 parameterRepository.findByExternalIdAndCategoryId(paramValue.getParameterId(), product.getCategory().getId())
                         .ifPresent(parameter ->
                                 parameterOptionRepository.findByExternalIdAndParameterId(paramValue.getOptionId(), parameter.getId())
@@ -504,13 +504,13 @@ public class SyncService {
                         .replaceAll("^-|-$", "");
     }
 
-    private void syncParameterOptions(Parameter parameter, List<ExternalParameterOptionDto> externalOptions) {
+    private void syncParameterOptions(Parameter parameter, List<ParameterOptionRequestDto> externalOptions) {
         Map<Long, ParameterOption> existingOptions = parameterOptionRepository
                 .findByParameterIdOrderByOrderAsc(parameter.getId())
                 .stream()
                 .collect(Collectors.toMap(ParameterOption::getExternalId, o -> o));
 
-        for (ExternalParameterOptionDto extOption : externalOptions) {
+        for (ParameterOptionRequestDto extOption : externalOptions) {
             ParameterOption option = existingOptions.get(extOption.getId());
 
             if (option == null) {
@@ -624,7 +624,7 @@ public class SyncService {
         }
     }
 
-    private Parameter createParameterFromExternal(ExternalParameterDto extParameter, Category category) {
+    private Parameter createParameterFromExternal(ParameterRequestDto extParameter, Category category) {
         Parameter parameter = new Parameter();
         parameter.setExternalId(extParameter.getId());
         parameter.setCategory(category);
@@ -643,7 +643,7 @@ public class SyncService {
         return parameter;
     }
 
-    private void updateParameterFromExternal(Parameter parameter, ExternalParameterDto extParameter) {
+    private void updateParameterFromExternal(Parameter parameter, ParameterRequestDto extParameter) {
         parameter.setOrder(extParameter.getOrder());
 
         if (extParameter.getName() != null) {
@@ -657,7 +657,7 @@ public class SyncService {
         }
     }
 
-    private ParameterOption createParameterOptionFromExternal(ExternalParameterOptionDto extOption, Parameter parameter) {
+    private ParameterOption createParameterOptionFromExternal(ParameterOptionRequestDto extOption, Parameter parameter) {
         ParameterOption option = new ParameterOption();
         option.setExternalId(extOption.getId());
         option.setParameter(parameter);
@@ -676,7 +676,7 @@ public class SyncService {
         return option;
     }
 
-    private void updateParameterOptionFromExternal(ParameterOption option, ExternalParameterOptionDto extOption) {
+    private void updateParameterOptionFromExternal(ParameterOption option, ParameterOptionRequestDto extOption) {
         option.setOrder(extOption.getOrder());
 
         if (extOption.getName() != null) {

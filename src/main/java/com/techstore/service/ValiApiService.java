@@ -2,7 +2,7 @@ package com.techstore.service;
 
 import com.techstore.dto.request.CategoryRequestDto;
 import com.techstore.dto.request.ManufacturerRequestDto;
-import com.techstore.dto.external.ExternalParameterDto;
+import com.techstore.dto.request.ParameterRequestDto;
 import com.techstore.dto.external.ExternalProductDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -78,16 +78,16 @@ public class ValiApiService {
                 .block();
     }
 
-    public List<ExternalParameterDto> getParametersByCategory(Long categoryId) {
+    public List<ParameterRequestDto> getParametersByCategory(Long categoryId) {
         log.debug("Fetching parameters for category: {}", categoryId);
 
         try {
-            List<ExternalParameterDto> parameters = webClient.get()
+            List<ParameterRequestDto> parameters = webClient.get()
                     .uri(baseUrl + "/parameters/" + categoryId)
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiToken)
                     .header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
                     .retrieve()
-                    .bodyToMono(new ParameterizedTypeReference<List<ExternalParameterDto>>() {
+                    .bodyToMono(new ParameterizedTypeReference<List<ParameterRequestDto>>() {
                     })
                     .timeout(Duration.ofMillis(timeout))
                     .retryWhen(Retry.backoff(retryAttempts, Duration.ofMillis(retryDelay)))

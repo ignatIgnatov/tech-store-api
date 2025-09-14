@@ -1,6 +1,6 @@
 package com.techstore.service;
 
-import com.techstore.dto.external.ExternalCategoryDto;
+import com.techstore.dto.request.CategoryRequestDto;
 import com.techstore.dto.external.ExternalManufacturerDto;
 import com.techstore.dto.external.ExternalParameterDto;
 import com.techstore.dto.external.ExternalProductDto;
@@ -44,7 +44,7 @@ public class ValiApiService {
     @Value("${vali.api.retry-delay}")
     private long retryDelay;
 
-    public List<ExternalCategoryDto> getCategories() {
+    public List<CategoryRequestDto> getCategories() {
         log.debug("Fetching categories from external API");
 
         return webClient.get()
@@ -52,7 +52,7 @@ public class ValiApiService {
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiToken)
                 .header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
                 .retrieve()
-                .bodyToMono(new ParameterizedTypeReference<List<ExternalCategoryDto>>() {
+                .bodyToMono(new ParameterizedTypeReference<List<CategoryRequestDto>>() {
                 })
                 .timeout(Duration.ofMillis(timeout))
                 .retryWhen(Retry.backoff(retryAttempts, Duration.ofMillis(retryDelay)))

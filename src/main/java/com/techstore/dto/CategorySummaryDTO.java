@@ -11,7 +11,8 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class CategorySummaryDTO {
     private Long id;
-    private String name;
+    private String nameEn;
+    private String nameBg;
     private String slug;
-    private Boolean active;
+    private Boolean show;
 }

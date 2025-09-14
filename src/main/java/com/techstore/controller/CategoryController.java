@@ -1,8 +1,7 @@
 package com.techstore.controller;
 
-import com.techstore.dto.CategoryRequestDTO;
 import com.techstore.dto.CategoryResponseDTO;
-import com.techstore.dto.CategoryTreeDTO;
+import com.techstore.dto.request.CategoryRequestDto;
 import com.techstore.service.CategoryService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -27,7 +26,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
-// ===== CATEGORY CONTROLLER =====
 @RestController
 @RequestMapping("/api/categories")
 @RequiredArgsConstructor
@@ -72,18 +70,11 @@ public class CategoryController {
         return ResponseEntity.ok(category);
     }
 
-    @GetMapping("/tree")
-    public ResponseEntity<List<CategoryTreeDTO>> getCategoryTree() {
-        List<CategoryTreeDTO> categoryTree = categoryService.getCategoryTree();
-        return ResponseEntity.ok(categoryTree);
-    }
-
     // ===== ADMIN ENDPOINTS =====
 
     @PostMapping
     @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
-    public ResponseEntity<CategoryResponseDTO> createCategory(@Valid @RequestBody CategoryRequestDTO requestDTO) {
-        log.info("Creating category with slug: {}", requestDTO.getSlug());
+    public ResponseEntity<CategoryResponseDTO> createCategory(@Valid @RequestBody CategoryRequestDto requestDTO) {
         CategoryResponseDTO createdCategory = categoryService.createCategory(requestDTO);
         return ResponseEntity.status(HttpStatus.CREATED).body(createdCategory);
     }
@@ -92,7 +83,7 @@ public class CategoryController {
     @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
     public ResponseEntity<CategoryResponseDTO> updateCategory(
             @PathVariable Long id,
-            @Valid @RequestBody CategoryRequestDTO requestDTO) {
+            @Valid @RequestBody CategoryRequestDto requestDTO) {
 
         log.info("Updating category with id: {}", id);
         CategoryResponseDTO updatedCategory = categoryService.updateCategory(id, requestDTO);

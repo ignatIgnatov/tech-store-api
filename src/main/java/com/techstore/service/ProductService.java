@@ -1,6 +1,5 @@
 package com.techstore.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.techstore.dto.CategorySummaryDTO;
 import com.techstore.dto.ManufacturerSummaryDto;
 import com.techstore.dto.ProductRequestDTO;
@@ -33,8 +32,6 @@ public class ProductService {
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
     private final ManufacturerRepository manufacturerRepository;
-
-    // ===== READ OPERATIONS =====
 
     @Transactional(readOnly = true)
     public Page<ProductSummaryDTO> getAllProducts(Pageable pageable) {
@@ -102,23 +99,12 @@ public class ProductService {
                 .toList();
     }
 
-    // ===== WRITE OPERATIONS =====
-
     public ProductResponseDTO createProduct(ProductRequestDTO requestDTO) {
         return null;
     }
 
     public ProductResponseDTO updateProduct(Long id, ProductRequestDTO requestDTO) {
-        log.info("Updating product with id: {}", id);
-
-        Product existingProduct = productRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + id));
-
-        updateProductFromDTO(existingProduct, requestDTO);
-        Product updatedProduct = productRepository.save(existingProduct);
-
-        log.info("Product updated successfully with id: {}", id);
-        return convertToResponseDTO(updatedProduct);
+        return null;
     }
 
     public void deleteProduct(Long id) {
@@ -127,7 +113,6 @@ public class ProductService {
         Product product = productRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + id));
 
-        // Soft delete by setting active to false
         product.setActive(false);
         productRepository.save(product);
 
@@ -143,28 +128,6 @@ public class ProductService {
 
         productRepository.deleteById(id);
         log.info("Product permanently deleted successfully with id: {}", id);
-    }
-
-    private void updateProductFromDTO(Product product, ProductRequestDTO dto) {
-        Category category = categoryRepository.findById(dto.getCategoryId())
-                .orElseThrow(() -> new ResourceNotFoundException("Category not found with id: " + dto.getCategoryId()));
-
-        Manufacturer manufacturer = manufacturerRepository.findById(dto.getManufacturerId())
-                .orElseThrow(() -> new ResourceNotFoundException("Brand not found with id: " + dto.getManufacturerId()));
-
-        product.setNameEn(dto.getName());
-        product.setDescriptionEn(dto.getDescriptionEn());
-        product.setDescriptionBg(dto.getDescriptionBg());
-        product.setPriceClient(dto.getPriceClient());
-        product.setDiscount(dto.getDiscount());
-        product.setActive(dto.getActive());
-        product.setFeatured(dto.getFeatured());
-        product.setPrimaryImageUrl(dto.getImageUrl());
-        product.setAdditionalImages(dto.getAdditionalImages());
-        product.setWarranty(Integer.parseInt(dto.getWarranty()));
-        product.setWeight(dto.getWeight());
-        product.setCategory(category);
-        product.setManufacturer(manufacturer);
     }
 
     private ProductResponseDTO convertToResponseDTO(Product product) {
@@ -214,9 +177,10 @@ public class ProductService {
     private CategorySummaryDTO convertToCategorySummary(Category category) {
         return CategorySummaryDTO.builder()
                 .id(category.getId())
-                .name(category.getNameEn())
+                .nameEn(category.getNameEn())
+                .nameBg(category.getNameBg())
                 .slug(category.getSlug())
-                .active(category.getActive())
+                .show(category.getShow())
                 .build();
     }
 

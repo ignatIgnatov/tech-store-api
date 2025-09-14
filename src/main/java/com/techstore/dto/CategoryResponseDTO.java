@@ -14,18 +14,14 @@ import java.util.List;
 @AllArgsConstructor
 public class CategoryResponseDTO {
     private Long id;
-    private String name;
+    private Long externalId;
+    private String nameBg;
+    private String nameEn;
     private String slug;
-    private String description;
-    private String imageUrl;
-    private Boolean active;
     private Integer sortOrder;
     private CategorySummaryDTO parent;
-    private List<CategorySummaryDTO> children;
-    private Integer productCount;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
-    private String fullPath;
     private Boolean isParentCategory;
-    private Boolean hasChildren;
+    private Boolean show;
 }

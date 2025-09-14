@@ -39,9 +39,6 @@ public class Category extends BaseEntity {
     private Boolean show = true;
 
     @Column(nullable = false)
-    private Boolean active = true;
-
-    @Column(nullable = false)
     private Integer sortOrder = 0;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -56,16 +53,5 @@ public class Category extends BaseEntity {
 
     public boolean isParentCategory() {
         return parent == null;
-    }
-
-    public boolean hasChildren() {
-        return children != null && !children.isEmpty();
-    }
-
-    public String getFullPath() {
-        if (parent == null) {
-            return nameEn;
-        }
-        return parent.getFullPath() + " / " + nameEn;
     }
 }

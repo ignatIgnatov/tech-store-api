@@ -8,7 +8,7 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.Named;
 
-@Mapper(componentModel = "spring", uses = {ManufacturerMapper.class, CategoryMapper.class})
+@Mapper(componentModel = "spring", uses = {ManufacturerMapper.class})
 public interface ProductMapper {
 
     @Mapping(target = "statusName", expression = "java(getLocalizedStatusName(product, language))")

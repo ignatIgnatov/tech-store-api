@@ -1,6 +1,6 @@
 package com.techstore.service;
 
-import com.techstore.dto.external.ExternalCategoryDto;
+import com.techstore.dto.request.CategoryRequestDto;
 import com.techstore.dto.external.ExternalManufacturerDto;
 import com.techstore.dto.external.ExternalParameterDto;
 import com.techstore.dto.external.ExternalParameterOptionDto;
@@ -96,14 +96,14 @@ public class SyncService {
         try {
             log.info("Starting categories synchronization");
 
-            List<ExternalCategoryDto> externalCategories = valiApiService.getCategories();
+            List<CategoryRequestDto> externalCategories = valiApiService.getCategories();
             Map<Long, Category> existingCategories = categoryRepository.findAll()
                     .stream()
                     .collect(Collectors.toMap(Category::getExternalId, c -> c));
 
             long created = 0, updated = 0;
 
-            for (ExternalCategoryDto extCategory : externalCategories) {
+            for (CategoryRequestDto extCategory : externalCategories) {
                 Category category = existingCategories.get(extCategory.getId());
 
                 if (category == null) {
@@ -530,7 +530,7 @@ public class SyncService {
         return syncLogRepository.save(syncLog);
     }
 
-    private Category createCategoryFromExternal(ExternalCategoryDto extCategory) {
+    private Category createCategoryFromExternal(CategoryRequestDto extCategory) {
         Category category = new Category();
         category.setExternalId(extCategory.getId());
         category.setShow(extCategory.getShow());
@@ -553,7 +553,7 @@ public class SyncService {
     }
 
 
-    private void updateCategoryFromExternal(Category category, ExternalCategoryDto extCategory) {
+    private void updateCategoryFromExternal(Category category, CategoryRequestDto extCategory) {
         category.setShow(extCategory.getShow());
         category.setSortOrder(extCategory.getOrder());
 
@@ -574,8 +574,8 @@ public class SyncService {
     }
 
 
-    private void updateCategoryParents(List<ExternalCategoryDto> externalCategories, Map<Long, Category> existingCategories) {
-        for (ExternalCategoryDto extCategory : externalCategories) {
+    private void updateCategoryParents(List<CategoryRequestDto> externalCategories, Map<Long, Category> existingCategories) {
+        for (CategoryRequestDto extCategory : externalCategories) {
             if (extCategory.getParent() != null && extCategory.getParent() != 0) {
                 Category category = existingCategories.get(extCategory.getId());
                 Category parent = existingCategories.get(extCategory.getParent());

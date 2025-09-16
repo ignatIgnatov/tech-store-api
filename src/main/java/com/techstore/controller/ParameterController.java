@@ -78,4 +78,12 @@ public class ParameterController {
         ParameterResponseDto parameter = parameterService.getParameterById(id, language);
         return ResponseEntity.ok(parameter);
     }
+
+    @GetMapping("/all")
+    public ResponseEntity<List<ParameterResponseDto>> getAllParameters(
+            @RequestParam(defaultValue = "en") String language
+    ) {
+        List<ParameterResponseDto> response = parameterService.getAllParameters(language);
+        return ResponseEntity.ok(response);
+    }
 }

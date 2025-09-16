@@ -142,6 +142,12 @@ public class ParameterService {
         return parameterMapper.toResponseDto(parameter, language);
     }
 
+    public List<ParameterResponseDto> getAllParameters(String lang) {
+        return parameterRepository.findAll().stream()
+                .map(p -> parameterMapper.toResponseDto(p, lang))
+                .toList();
+    }
+
     private ParameterOption createParameterOptionFromExternal(ParameterOptionRequestDto extOption, Parameter parameter) {
         ParameterOption option = new ParameterOption();
         option.setExternalId(extOption.getId());

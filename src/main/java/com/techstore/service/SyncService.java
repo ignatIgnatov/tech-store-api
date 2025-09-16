@@ -50,6 +50,11 @@ import java.util.stream.Collectors;
 @Slf4j
 public class SyncService {
 
+    private static final Set<Long> EXCLUDED_CATEGORY_IDS = Set.of(621L, 594L, 648L, 664L, 663L, 715L);
+    private static final String LOG_STATUS_SUCCESS = "SUCCESS";
+    private static final String LOG_STATUS_FAILED = "FAILED";
+    private static final String LOG_STATUS_IN_PROGRESS = "IN_PROGRESS";
+
     private final ValiApiService valiApiService;
     private final CategoryRepository categoryRepository;
     private final ManufacturerRepository manufacturerRepository;
@@ -106,12 +111,12 @@ public class SyncService {
     public void monitorSyncHealth() {
         try {
             List<SyncLog> stuckSyncs = syncLogRepository.findByStatusAndCreatedAtBefore(
-                    "IN_PROGRESS", LocalDateTime.now().minusHours(2));
+                    LOG_STATUS_IN_PROGRESS, LocalDateTime.now().minusHours(2));
 
             if (!stuckSyncs.isEmpty()) {
                 log.warn("Found {} stuck sync processes", stuckSyncs.size());
                 stuckSyncs.forEach(sync -> {
-                    sync.setStatus("FAILED");
+                    sync.setStatus(LOG_STATUS_FAILED);
                     sync.setErrorMessage("Stuck - marked as failed by monitor");
                     syncLogRepository.save(sync);
                 });
@@ -138,9 +143,15 @@ public class SyncService {
                     .stream()
                     .collect(Collectors.toMap(Category::getExternalId, c -> c));
 
-            long created = 0, updated = 0;
+            long created = 0, updated = 0, skipped = 0;
 
             for (CategoryRequestDto extCategory : externalCategories) {
+                if (EXCLUDED_CATEGORY_IDS.contains(extCategory.getId())) {
+                    log.debug("Skipping excluded category with external ID: {}", extCategory.getId());
+                    skipped++;
+                    continue;
+                }
+
                 Category category = existingCategories.get(extCategory.getId());
 
                 if (category == null) {
@@ -158,11 +169,13 @@ public class SyncService {
 
             updateCategoryParents(externalCategories, existingCategories);
 
-            updateSyncLogSimple(syncLog, "SUCCESS", (long) externalCategories.size(), created, updated, 0, null, startTime);
-            log.info("Categories synchronization completed - Created: {}, Updated: {}", created, updated);
+            updateSyncLogSimple(syncLog, LOG_STATUS_SUCCESS, externalCategories.size(), created, updated, 0,
+                    skipped > 0 ? String.format("Skipped %d excluded categories", skipped) : null, startTime);
+            log.info("Categories synchronization completed - Created: {}, Updated: {}, Skipped: {}",
+                    created, updated, skipped);
 
         } catch (Exception e) {
-            updateSyncLogSimple(syncLog, "FAILED", 0, 0, 0, 0, e.getMessage(), startTime);
+            updateSyncLogSimple(syncLog, LOG_STATUS_FAILED, 0, 0, 0, 0, e.getMessage(), startTime);
             log.error("Error during categories synchronization", e);
             throw e;
         }
@@ -198,11 +211,11 @@ public class SyncService {
                 manufacturerRepository.save(manufacturer);
             }
 
-            updateSyncLogSimple(syncLog, "SUCCESS", (long) externalManufacturers.size(), created, updated, 0, null, startTime);
+            updateSyncLogSimple(syncLog, LOG_STATUS_SUCCESS, (long) externalManufacturers.size(), created, updated, 0, null, startTime);
             log.info("Manufacturers synchronization completed - Created: {}, Updated: {}", created, updated);
 
         } catch (Exception e) {
-            updateSyncLogSimple(syncLog, "FAILED", 0, 0, 0, 0, e.getMessage(), startTime);
+            updateSyncLogSimple(syncLog, LOG_STATUS_FAILED, 0, 0, 0, 0, e.getMessage(), startTime);
             log.error("Error during manufacturers synchronization", e);
             throw e;
         }
@@ -237,12 +250,12 @@ public class SyncService {
                 }
             }
 
-            updateSyncLogSimple(syncLog, "SUCCESS", totalProcessed, created, updated, errors,
+            updateSyncLogSimple(syncLog, LOG_STATUS_SUCCESS, totalProcessed, created, updated, errors,
                     errors > 0 ? String.format("Completed with %d errors", errors) : null, startTime);
             log.info("Parameters synchronization completed - Created: {}, Updated: {}, Errors: {}", created, updated, errors);
 
         } catch (Exception e) {
-            updateSyncLogSimple(syncLog, "FAILED", 0, 0, 0, 0, e.getMessage(), startTime);
+            updateSyncLogSimple(syncLog, LOG_STATUS_FAILED, 0, 0, 0, 0, e.getMessage(), startTime);
             log.error("Error during parameters synchronization", e);
             throw e;
         }
@@ -364,12 +377,12 @@ public class SyncService {
                 }
             }
 
-            updateSyncLogSimple(syncLog, "SUCCESS", totalProcessed, created, updated, errors,
+            updateSyncLogSimple(syncLog, LOG_STATUS_SUCCESS, totalProcessed, created, updated, errors,
                     errors > 0 ? String.format("Completed with %d errors", errors) : null, startTime);
             log.info("Products synchronization completed - Created: {}, Updated: {}, Errors: {}", created, updated, errors);
 
         } catch (Exception e) {
-            updateSyncLogSimple(syncLog, "FAILED", totalProcessed, created, updated, errors, e.getMessage(), startTime);
+            updateSyncLogSimple(syncLog, LOG_STATUS_FAILED, totalProcessed, created, updated, errors, e.getMessage(), startTime);
             log.error("Error during products synchronization", e);
             throw e;
         }
@@ -387,7 +400,7 @@ public class SyncService {
 
             if (externalDocuments.isEmpty()) {
                 log.info("No documents found in external API");
-                updateSyncLogSimple(syncLog, "SUCCESS", 0, 0, 0, 0, null, startTime);
+                updateSyncLogSimple(syncLog, LOG_STATUS_SUCCESS, 0, 0, 0, 0, null, startTime);
                 return;
             }
 
@@ -419,12 +432,12 @@ public class SyncService {
                 }
             }
 
-            updateSyncLogSimple(syncLog, "SUCCESS", totalProcessed, created, updated, errors,
+            updateSyncLogSimple(syncLog, LOG_STATUS_SUCCESS, totalProcessed, created, updated, errors,
                     errors > 0 ? String.format("Completed with %d errors", errors) : null, startTime);
             log.info("Documents synchronization completed - Created: {}, Updated: {}, Errors: {}", created, updated, errors);
 
         } catch (Exception e) {
-            updateSyncLogSimple(syncLog, "FAILED", 0, 0, 0, 0, e.getMessage(), startTime);
+            updateSyncLogSimple(syncLog, LOG_STATUS_FAILED, 0, 0, 0, 0, e.getMessage(), startTime);
             log.error("Error during documents synchronization", e);
             throw e;
         }
@@ -552,7 +565,7 @@ public class SyncService {
         try {
             SyncLog syncLog = new SyncLog();
             syncLog.setSyncType(syncType);
-            syncLog.setStatus("IN_PROGRESS");
+            syncLog.setStatus(LOG_STATUS_IN_PROGRESS);
             return syncLogRepository.save(syncLog);
         } catch (Exception e) {
             log.error("Failed to create sync log: {}", e.getMessage());

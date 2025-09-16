@@ -30,12 +30,9 @@ import java.util.List;
 @RequestMapping("/api/categories")
 @RequiredArgsConstructor
 @Slf4j
-@CrossOrigin(origins = "*", maxAge = 3600)
 public class CategoryController {
 
     private final CategoryService categoryService;
-
-    // ===== PUBLIC ENDPOINTS =====
 
     @GetMapping
     public ResponseEntity<List<CategoryResponseDTO>> getAllCategories() {

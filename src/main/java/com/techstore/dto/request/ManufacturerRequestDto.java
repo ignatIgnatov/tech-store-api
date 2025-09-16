@@ -7,7 +7,7 @@ import lombok.Data;
 public class ManufacturerRequestDto {
     private Long id;
     private String name;
-    private InformationDto information;
+    private ManufacturerInformationDto information;
     @JsonProperty("eu_representative")
-    private EuRepresentativeDto euRepresentative;
+    private ManufacturerEuRepresentativeDto euRepresentative;
 }

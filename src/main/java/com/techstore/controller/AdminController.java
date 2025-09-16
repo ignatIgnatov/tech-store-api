@@ -67,7 +67,7 @@ public class AdminController {
         }
     }
 
-    @PostMapping("/sync/products-by-cat")
+    @PostMapping("/sync/products-by-category")
     public ResponseEntity<String> syncProductsByCat(@RequestParam("id") Long id) {
         try {
             syncService.syncProductsByCategory(id);

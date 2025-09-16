@@ -17,6 +17,10 @@ spring:
         show-sql: false
         properties:
             hibernate:
+                jdbc:
+                    batch_size: 30
+                order_inserts: true
+                order_updates: true
                 format_sql: true
                 use_sql_comments: true
                 default_batch_fetch_size: 20
@@ -29,12 +33,12 @@ spring:
 
     # Connection Pool Configuration
     hikari:
-        maximum-pool-size: 20
-        minimum-idle: 5
-        idle-timeout: 600000
-        pool-name: TechStoreHikariCP
+        maximum-pool-size: 3  # Увеличи значително
+        minimum-idle: 10
+        connection-timeout: 10000
+        idle-timeout: 300000
         max-lifetime: 1800000
-        connection-timeout: 30000
+        leak-detection-threshold: 5000
 
     # Jackson Configuration
     jackson:
@@ -65,8 +69,8 @@ server:
 logging:
     level:
         com.techstore: DEBUG
-        org.hibernate.SQL: DEBUG
-        org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+        org.hibernate.SQL: ERROR
+        org.hibernate.type.descriptor.sql.BasicBinder: ERROR
     pattern:
         console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
         file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
@@ -77,8 +81,9 @@ logging:
 app:
     sync:
         enabled: true
-        cron: "0 0 2 * * ?" # Every day at 2 AM
-        batch-size: 100
+        cron: "0 0 2 * * *"  # 2:00 AM всеки ден
+        batch-size: 30       # Chunks от 30 записа
+        max-chunk-duration-minutes: 5
 
     markup:
         default-percentage: 20.0

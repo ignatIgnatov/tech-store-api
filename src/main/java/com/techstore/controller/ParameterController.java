@@ -65,7 +65,7 @@ public class ParameterController {
             @RequestParam(defaultValue = "en") String language) {
 
         log.info("Fetching parameters for category ID: {} in language: {}", categoryId, language);
-        List<ParameterResponseDto> parameters = parameterService.getParametersByCategory(categoryId, language);
+        List<ParameterResponseDto> parameters = parameterService.findByCategory(categoryId, language);
         return ResponseEntity.ok(parameters);
     }
 

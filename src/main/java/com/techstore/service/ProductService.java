@@ -1,18 +1,22 @@
 package com.techstore.service;
 
 import com.techstore.dto.ProductResponseDTO;
-import com.techstore.dto.external.ExternalProductDto;
+import com.techstore.dto.external.ProductRequestDto;
 import com.techstore.dto.external.ImageDto;
+import com.techstore.dto.request.ParameterValueRequestDto;
 import com.techstore.dto.response.CategorySummaryDTO;
 import com.techstore.dto.response.ManufacturerSummaryDto;
 import com.techstore.entity.Category;
 import com.techstore.entity.Manufacturer;
 import com.techstore.entity.Product;
+import com.techstore.entity.ProductParameter;
 import com.techstore.enums.ProductStatus;
 import com.techstore.exception.DuplicateResourceException;
 import com.techstore.exception.ResourceNotFoundException;
 import com.techstore.repository.CategoryRepository;
 import com.techstore.repository.ManufacturerRepository;
+import com.techstore.repository.ParameterOptionRepository;
+import com.techstore.repository.ParameterRepository;
 import com.techstore.repository.ProductRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,6 +37,8 @@ public class ProductService {
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
     private final ManufacturerRepository manufacturerRepository;
+    private final ParameterRepository parameterRepository;
+    private final ParameterOptionRepository parameterOptionRepository;
 
     @Transactional(readOnly = true)
     public Page<ProductResponseDTO> getAllProducts(Pageable pageable) {
@@ -101,7 +107,7 @@ public class ProductService {
     }
 
     @Transactional
-    public ProductResponseDTO createProduct(ExternalProductDto dto) {
+    public ProductResponseDTO createProduct(ProductRequestDto dto) {
         if (productRepository.existsByReferenceNumberIgnoreCase(dto.getReferenceNumber())) {
             throw new DuplicateResourceException("Product with already exists with ref. number " + dto.getReferenceNumber());
         }
@@ -115,7 +121,7 @@ public class ProductService {
 
     }
 
-    private void updateProductFieldsFromExternal(Product product, ExternalProductDto dto) {
+    private void updateProductFieldsFromExternal(Product product, ProductRequestDto dto) {
         setNamesToProduct(product, dto);
         setDescriptionToProduct(product, dto);
         product.setReferenceNumber(dto.getReferenceNumber());
@@ -136,15 +142,16 @@ public class ProductService {
         product.calculateFinalPrice();
 
         setImagesToProduct(product, dto);
+        setParametersToProduct(product, dto);
     }
 
-    private void setManufacturer(Product product, ExternalProductDto dto) {
+    private void setManufacturer(Product product, ProductRequestDto dto) {
         Manufacturer manufacturer = manufacturerRepository.findById(dto.getManufacturerId())
                 .orElseThrow(() -> new ResourceNotFoundException("Manufacturer not found: " + dto.getManufacturerId()));
         product.setManufacturer(manufacturer);
     }
 
-    private static void setImagesToProduct(Product product, ExternalProductDto extProduct) {
+    private static void setImagesToProduct(Product product, ProductRequestDto extProduct) {
         if (extProduct.getImages() != null && !extProduct.getImages().isEmpty()) {
             product.setPrimaryImageUrl(extProduct.getImages().get(0).getHref());
             product.setAdditionalImages(
@@ -153,12 +160,12 @@ public class ProductService {
         }
     }
 
-    private void setCategoryToProduct(Product product, ExternalProductDto extProduct) {
+    private void setCategoryToProduct(Product product, ProductRequestDto extProduct) {
         categoryRepository.findByExternalId(extProduct.getCategories().get(0).getId())
                 .ifPresent(product::setCategory);
     }
 
-    private static void setDescriptionToProduct(Product product, ExternalProductDto extProduct) {
+    private static void setDescriptionToProduct(Product product, ProductRequestDto extProduct) {
         if (extProduct.getDescription() != null) {
             extProduct.getDescription().forEach(desc -> {
                 switch (desc.getLanguageCode()) {
@@ -169,7 +176,7 @@ public class ProductService {
         }
     }
 
-    private static void setNamesToProduct(Product product, ExternalProductDto extProduct) {
+    private static void setNamesToProduct(Product product, ProductRequestDto extProduct) {
         if (extProduct.getName() != null) {
             extProduct.getName().forEach(name -> {
                 switch (name.getLanguageCode()) {
@@ -180,7 +187,7 @@ public class ProductService {
         }
     }
 
-    public ProductResponseDTO updateProduct(Long id, ExternalProductDto requestDTO) {
+    public ProductResponseDTO updateProduct(Long id, ProductRequestDto requestDTO) {
         Product product = productRepository.findById(id).orElseThrow(
                 () -> new ResourceNotFoundException("Product not found with id " + id)
         );
@@ -279,5 +286,25 @@ public class ProductService {
                 .id(manufacturer.getId())
                 .name(manufacturer.getName())
                 .build();
+    }
+
+    private void setParametersToProduct(Product product, ProductRequestDto extProduct) {
+        if (extProduct.getParameters() != null && product.getCategory() != null) {
+            product.getProductParameters().clear();
+
+            for (ParameterValueRequestDto paramValue : extProduct.getParameters()) {
+                parameterRepository.findByExternalIdAndCategoryId(paramValue.getParameterId(), product.getCategory().getId())
+                        .ifPresent(parameter ->
+                                parameterOptionRepository.findByExternalIdAndParameterId(paramValue.getOptionId(), parameter.getId())
+                                        .ifPresent(option -> {
+                                            ProductParameter pp = new ProductParameter();
+                                            pp.setProduct(product);
+                                            pp.setParameter(parameter);
+                                            pp.setParameterOption(option);
+                                            product.getProductParameters().add(pp);
+                                        })
+                        );
+            }
+        }
     }
 }

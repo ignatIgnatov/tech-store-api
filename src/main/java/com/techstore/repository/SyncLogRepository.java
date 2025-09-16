@@ -9,10 +9,13 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 @Repository
 public interface SyncLogRepository extends JpaRepository<SyncLog, Long> {
+
+    List<SyncLog> findByStatusAndCreatedAtBefore(String status, LocalDateTime createdAt);
 
     Optional<SyncLog> findTopBySyncTypeOrderByCreatedAtDesc(String syncType);
 

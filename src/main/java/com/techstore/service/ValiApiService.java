@@ -1,9 +1,10 @@
 package com.techstore.service;
 
 import com.techstore.dto.request.CategoryRequestDto;
+import com.techstore.dto.request.DocumentRequestDto;
 import com.techstore.dto.request.ManufacturerRequestDto;
 import com.techstore.dto.request.ParameterRequestDto;
-import com.techstore.dto.external.ExternalProductDto;
+import com.techstore.dto.external.ProductRequestDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -110,15 +111,15 @@ public class ValiApiService {
         }
     }
 
-    public List<ExternalProductDto> getProductsByCategory(Long categoryId) {
+    public List<ProductRequestDto> getProductsByCategory(Long categoryId) {
         log.debug("Fetching products for category: {}", categoryId);
 
-        List<ExternalProductDto> products = webClient.get()
+        List<ProductRequestDto> products = webClient.get()
                 .uri(baseUrl + "/products/by_category/" + categoryId + "/full")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiToken)
                 .header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
                 .retrieve()
-                .bodyToMono(new ParameterizedTypeReference<List<ExternalProductDto>>() {
+                .bodyToMono(new ParameterizedTypeReference<List<ProductRequestDto>>() {
                 })
                 .timeout(Duration.ofMillis(timeout))
                 .retryWhen(Retry.backoff(retryAttempts, Duration.ofMillis(retryDelay)))
@@ -136,5 +137,77 @@ public class ValiApiService {
 
         log.debug("Found {} products for category {}", products.size(), categoryId);
         return products;
+    }
+
+    public List<DocumentRequestDto> getDocumentsByProduct(Long productId) {
+        log.debug("Fetching documents for product: {}", productId);
+
+        try {
+            List<DocumentRequestDto> documents = webClient.get()
+                    .uri(baseUrl + "/products/" + productId + "/documents")
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiToken)
+                    .header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
+                    .retrieve()
+                    .bodyToMono(new ParameterizedTypeReference<List<DocumentRequestDto>>() {
+                    })
+                    .timeout(Duration.ofMillis(timeout))
+                    .retryWhen(Retry.backoff(retryAttempts, Duration.ofMillis(retryDelay)))
+                    .onErrorResume(WebClientResponseException.class, ex -> {
+                        log.warn("Error fetching documents for product {}: {} - {}",
+                                productId, ex.getStatusCode(), ex.getResponseBodyAsString());
+                        return Mono.just(List.of());
+                    })
+                    .block();
+
+            if (documents == null) {
+                log.debug("No documents found for product {}", productId);
+                return List.of();
+            }
+
+            log.debug("Found {} documents for product {}", documents.size(), productId);
+            return documents;
+
+        } catch (Exception e) {
+            log.error("Unexpected error fetching documents for product {}: {}", productId, e.getMessage());
+            return List.of();
+        }
+    }
+
+    public List<DocumentRequestDto> getAllDocuments() {
+        log.debug("Fetching all documents from external API");
+
+        try {
+            List<DocumentRequestDto> documents = webClient.get()
+                    .uri(baseUrl + "/documents")
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiToken)
+                    .header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
+                    .retrieve()
+                    .bodyToMono(new ParameterizedTypeReference<List<DocumentRequestDto>>() {
+                    })
+                    .timeout(Duration.ofMillis(timeout))
+                    .retryWhen(Retry.backoff(retryAttempts, Duration.ofMillis(retryDelay)))
+                    .onErrorResume(DataBufferLimitException.class, ex -> {
+                        log.error("Response too large for documents: {}", ex.getMessage());
+                        return Mono.just(List.of());
+                    })
+                    .onErrorResume(WebClientResponseException.class, ex -> {
+                        log.warn("Error fetching all documents: {} - {}",
+                                ex.getStatusCode(), ex.getResponseBodyAsString());
+                        return Mono.just(List.of());
+                    })
+                    .block();
+
+            if (documents == null) {
+                log.debug("No documents found");
+                return List.of();
+            }
+
+            log.debug("Found {} total documents", documents.size());
+            return documents;
+
+        } catch (Exception e) {
+            log.error("Unexpected error fetching all documents: {}", e.getMessage());
+            return List.of();
+        }
     }
 }

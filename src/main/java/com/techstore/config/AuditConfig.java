@@ -23,6 +23,12 @@ public class AuditConfig {
         @Override
         public Optional<String> getCurrentAuditor() {
             try {
+                // Пропусни audit за sync операции
+                String threadName = Thread.currentThread().getName();
+                if (threadName.contains("sync") || threadName.contains("Sync")) {
+                    return Optional.of("system");
+                }
+
                 Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
                 if (authentication == null || !authentication.isAuthenticated()) {

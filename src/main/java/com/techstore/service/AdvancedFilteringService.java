@@ -1,7 +1,11 @@
 package com.techstore.service;
 
-import com.techstore.dto.AdvancedFilterRequestDTO;
-import com.techstore.dto.ProductSummaryDTO;
+import com.techstore.dto.filter.AdvancedFilterRequestDTO;
+import com.techstore.dto.ProductResponseDTO;
+import com.techstore.dto.response.CategorySummaryDTO;
+import com.techstore.dto.response.ManufacturerSummaryDto;
+import com.techstore.entity.Category;
+import com.techstore.entity.Manufacturer;
 import com.techstore.entity.Product;
 import com.techstore.repository.ProductRepository;
 import lombok.RequiredArgsConstructor;
@@ -29,7 +33,7 @@ public class AdvancedFilteringService {
     /**
      * Advanced product filtering with specification-based filters
      */
-    public Page<ProductSummaryDTO> filterProductsAdvanced(AdvancedFilterRequestDTO filterRequest, Pageable pageable) {
+    public Page<ProductResponseDTO> filterProductsAdvanced(AdvancedFilterRequestDTO filterRequest, Pageable pageable) {
         // Build dynamic query based on filters
         List<Product> filteredProducts = buildFilteredProductQuery(filterRequest);
 
@@ -41,7 +45,7 @@ public class AdvancedFilteringService {
 
         Page<Product> productPage = new PageImpl<>(pageContent, pageable, filteredProducts.size());
 
-        return productPage.map(this::convertToSummaryDTO);
+        return productPage.map(this::convertToResponseDTO);
     }
 
     private List<Product> buildFilteredProductQuery(AdvancedFilterRequestDTO filterRequest) {
@@ -86,22 +90,69 @@ public class AdvancedFilteringService {
         return new ArrayList<>(candidates);
     }
 
-    private ProductSummaryDTO convertToSummaryDTO(Product product) {
-        return ProductSummaryDTO.builder()
-                .id(product.getId())
-                .name(product.getNameEn())
-                .manufacturerName(product.getManufacturer().getName())
-                .priceClient(product.getPriceClient())
-                .pricePartner(product.getPricePartner())
-                .pricePromo(product.getPricePromo())
-                .priceClientPromo(product.getPriceClientPromo())
-                .discount(product.getDiscount())
-                .active(product.getActive())
-                .featured(product.getFeatured())
-                .primaryImageUrl(product.getPrimaryImageUrl())
-                .categoryName(product.getCategory().getNameEn())
-                .onSale(product.isOnSale())
-                .status(product.getStatus().getCode())
+    private ProductResponseDTO convertToResponseDTO(Product product) {
+        ProductResponseDTO dto = new ProductResponseDTO();
+
+        dto.setId(product.getId());
+        dto.setNameEn(product.getNameEn());
+        dto.setNameBg(product.getNameBg());
+        dto.setDescriptionEn(product.getDescriptionEn());
+        dto.setDescriptionBg(product.getDescriptionBg());
+
+        dto.setReferenceNumber(product.getReferenceNumber());
+        dto.setModel(product.getModel());
+        dto.setBarcode(product.getBarcode());
+
+        dto.setPriceClient(product.getPriceClient());
+        dto.setPricePartner(product.getPricePartner());
+        dto.setPricePromo(product.getPricePromo());
+        dto.setPriceClientPromo(product.getPriceClientPromo());
+        dto.setMarkupPercentage(product.getMarkupPercentage());
+        dto.setFinalPrice(product.getFinalPrice());
+        dto.setDiscount(product.getDiscount());
+
+        dto.setActive(product.getActive());
+        dto.setFeatured(product.getFeatured());
+        dto.setShow(product.getShow());
+
+        dto.setPrimaryImageUrl(product.getPrimaryImageUrl());
+        dto.setAdditionalImages(product.getAdditionalImages());
+
+        dto.setWarranty(product.getWarranty());
+        dto.setWeight(product.getWeight());
+        dto.setSpecifications(product.getProductParameters().stream().toList());
+
+        if (product.getCategory() != null) {
+            dto.setCategory(convertToCategorySummary(product.getCategory()));
+        }
+
+        if (product.getManufacturer() != null) {
+            dto.setManufacturer(convertToManufacturerSummary(product.getManufacturer()));
+        }
+
+        dto.setCreatedAt(product.getCreatedAt());
+        dto.setUpdatedAt(product.getUpdatedAt());
+        dto.setOnSale(product.isOnSale());
+        dto.setStatus(product.getStatus() != null ? product.getStatus().getCode() : 0);
+        dto.setWorkflowId(product.getWorkflowId());
+
+        return dto;
+    }
+
+    private CategorySummaryDTO convertToCategorySummary(Category category) {
+        return CategorySummaryDTO.builder()
+                .id(category.getId())
+                .nameEn(category.getNameEn())
+                .nameBg(category.getNameBg())
+                .slug(category.getSlug())
+                .show(category.getShow())
+                .build();
+    }
+
+    private ManufacturerSummaryDto convertToManufacturerSummary(Manufacturer manufacturer) {
+        return ManufacturerSummaryDto.builder()
+                .id(manufacturer.getId())
+                .name(manufacturer.getName())
                 .build();
     }
 }

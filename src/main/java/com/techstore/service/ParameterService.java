@@ -6,7 +6,6 @@ import com.techstore.dto.response.ParameterResponseDto;
 import com.techstore.entity.Category;
 import com.techstore.entity.Parameter;
 import com.techstore.entity.ParameterOption;
-import com.techstore.exception.DuplicateResourceException;
 import com.techstore.exception.ResourceNotFoundException;
 import com.techstore.mapper.ParameterMapper;
 import com.techstore.repository.CategoryRepository;
@@ -127,45 +126,20 @@ public class ParameterService {
                 .toList();
     }
 
+    @Cacheable(value = "parameters", key = "'category_' + #categoryId + '_' + #language")
+    public List<ParameterResponseDto> findByCategory(Long categoryId, String language) {
+        List<Parameter> parameters = parameterRepository.findByCategoryIdOrderByOrderAsc(categoryId);
+        return parameters.stream()
+                .map(parameter -> parameterMapper.toResponseDto(parameter, language))
+                .toList();
+    }
+
     @Cacheable(value = "parameters", key = "#id + '_' + #language")
     public ParameterResponseDto getParameterById(Long id, String language) {
         Parameter parameter = parameterRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Parameter not found with id: " + id));
 
         return parameterMapper.toResponseDto(parameter, language);
-    }
-
-    private Parameter createParameterFromExternal(ParameterRequestDto extParameter, Category category) {
-        Parameter parameter = new Parameter();
-        parameter.setExternalId(extParameter.getId());
-        parameter.setCategory(category);
-        parameter.setOrder(extParameter.getOrder());
-
-        if (extParameter.getName() != null) {
-            extParameter.getName().forEach(name -> {
-                if ("bg".equals(name.getLanguageCode())) {
-                    parameter.setNameBg(name.getText());
-                } else if ("en".equals(name.getLanguageCode())) {
-                    parameter.setNameEn(name.getText());
-                }
-            });
-        }
-
-        return parameter;
-    }
-
-    private void updateParameterFromExternal(Parameter parameter, ParameterRequestDto extParameter) {
-        parameter.setOrder(extParameter.getOrder());
-
-        if (extParameter.getName() != null) {
-            extParameter.getName().forEach(name -> {
-                if ("bg".equals(name.getLanguageCode())) {
-                    parameter.setNameBg(name.getText());
-                } else if ("en".equals(name.getLanguageCode())) {
-                    parameter.setNameEn(name.getText());
-                }
-            });
-        }
     }
 
     private ParameterOption createParameterOptionFromExternal(ParameterOptionRequestDto extOption, Parameter parameter) {

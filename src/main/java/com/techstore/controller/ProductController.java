@@ -1,10 +1,8 @@
 package com.techstore.controller;
 
-import com.techstore.dto.AdvancedFilterRequestDTO;
-import com.techstore.dto.ProductComparisonDTO;
+import com.techstore.dto.filter.AdvancedFilterRequestDTO;
 import com.techstore.dto.ProductResponseDTO;
-import com.techstore.dto.ProductSummaryDTO;
-import com.techstore.dto.external.ExternalProductDto;
+import com.techstore.dto.external.ProductRequestDto;
 import com.techstore.enums.ProductStatus;
 import com.techstore.service.AdvancedFilteringService;
 import com.techstore.service.ProductService;
@@ -17,7 +15,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -36,14 +33,13 @@ import java.util.List;
 @RequestMapping("/api/products")
 @RequiredArgsConstructor
 @Slf4j
-@CrossOrigin(origins = "*", maxAge = 3600)
 public class ProductController {
 
     private final ProductService productService;
     private final AdvancedFilteringService filteringService;
 
     @PostMapping("/filter/advanced")
-    public ResponseEntity<Page<ProductSummaryDTO>> filterProductsAdvanced(
+    public ResponseEntity<Page<ProductResponseDTO>> filterProductsAdvanced(
             @RequestBody AdvancedFilterRequestDTO filterRequest,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
@@ -54,14 +50,8 @@ public class ProductController {
                 Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
         Pageable pageable = PageRequest.of(page, size, sort);
 
-        Page<ProductSummaryDTO> products = filteringService.filterProductsAdvanced(filterRequest, pageable);
+        Page<ProductResponseDTO> products = filteringService.filterProductsAdvanced(filterRequest, pageable);
         return ResponseEntity.ok(products);
-    }
-
-    @GetMapping("/compare")
-    public ResponseEntity<List<ProductComparisonDTO>> compareProducts(@RequestParam List<Long> productIds) {
-        // Implementation for product comparison
-        return ResponseEntity.ok(List.of());
     }
 
     @GetMapping
@@ -191,7 +181,7 @@ public class ProductController {
 
     @PostMapping
 //    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
-    public ResponseEntity<ProductResponseDTO> createProduct(@Valid @RequestBody ExternalProductDto requestDTO) {
+    public ResponseEntity<ProductResponseDTO> createProduct(@Valid @RequestBody ProductRequestDto requestDTO) {
         ProductResponseDTO createdProduct = productService.createProduct(requestDTO);
         return ResponseEntity.status(HttpStatus.CREATED).body(createdProduct);
     }
@@ -200,7 +190,7 @@ public class ProductController {
 //    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
     public ResponseEntity<ProductResponseDTO> updateProduct(
             @PathVariable Long id,
-            @Valid @RequestBody ExternalProductDto requestDTO) {
+            @Valid @RequestBody ProductRequestDto requestDTO) {
 
         log.info("Updating product with id: {}", id);
         ProductResponseDTO updatedProduct = productService.updateProduct(id, requestDTO);

@@ -1,6 +1,5 @@
 package com.techstore.mapper;
 
-import com.techstore.dto.response.ProductResponseDto;
 import com.techstore.dto.response.ProductSummaryDto;
 import com.techstore.entity.Product;
 import org.mapstruct.Context;
@@ -10,12 +9,6 @@ import org.mapstruct.Named;
 
 @Mapper(componentModel = "spring", uses = {ManufacturerMapper.class})
 public interface ProductMapper {
-
-    @Mapping(target = "statusName", expression = "java(getLocalizedStatusName(product, language))")
-    @Mapping(target = "parameters", source = "product.productParameters", qualifiedByName = "mapProductParametersToParameters")
-    @Mapping(target = "flags", source = "product.productFlags", qualifiedByName = "mapProductFlagsToFlags")
-    @Mapping(target = "isFavorite", ignore = true)
-    ProductResponseDto toResponseDto(Product product, @Context String language);
 
     @Mapping(target = "manufacturer", expression = "java(product.getManufacturer().getName())")
     @Mapping(target = "statusName", expression = "java(getLocalizedStatusName(product, language))")

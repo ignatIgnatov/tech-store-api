@@ -1,8 +1,8 @@
 package com.techstore.controller;
 
-import com.techstore.dto.LoginRequestDTO;
-import com.techstore.dto.LoginResponseDTO;
-import com.techstore.dto.UserRequestDTO;
+import com.techstore.dto.request.LoginRequestDTO;
+import com.techstore.dto.response.LoginResponseDTO;
+import com.techstore.dto.request.UserRequestDTO;
 import com.techstore.dto.UserResponseDTO;
 import com.techstore.service.AuthService;
 import lombok.RequiredArgsConstructor;

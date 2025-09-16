@@ -78,6 +78,29 @@ public class AdminController {
         }
     }
 
+    @PostMapping("/sync/documents")
+//    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<String> syncDocuments() {
+        try {
+            syncService.syncDocuments();
+            return ResponseEntity.ok("Documents synchronization completed successfully");
+        } catch (Exception e) {
+            log.error("Error during manual documents synchronization", e);
+            return ResponseEntity.internalServerError().body("Error during synchronization: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("/sync/documents-by-product")
+    public ResponseEntity<String> syncDocumentsByProduct(@RequestParam("id") Long productId) {
+        try {
+            syncService.syncDocumentsByProduct(productId);
+            return ResponseEntity.ok("Documents synchronization for product completed successfully");
+        } catch (Exception e) {
+            log.error("Error during manual documents synchronization for product {}", productId, e);
+            return ResponseEntity.internalServerError().body("Error during synchronization: " + e.getMessage());
+        }
+    }
+
     @PostMapping("/sync/all")
 //    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<String> syncAll() {

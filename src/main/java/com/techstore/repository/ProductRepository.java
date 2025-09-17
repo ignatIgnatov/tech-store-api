@@ -18,6 +18,41 @@ import java.util.Optional;
 @Repository
 public interface ProductRepository extends JpaRepository<Product, Long> {
 
+    /**
+     * Find products by both category and manufacturer
+     */
+    Page<Product> findByActiveTrueAndCategoryIdAndManufacturerId(
+            Long categoryId, Long manufacturerId, Pageable pageable);
+
+    /**
+     * Find products by category with optional manufacturer filter
+     */
+    @Query("SELECT p FROM Product p WHERE p.active = true " +
+            "AND (:categoryId IS NULL OR p.category.id = :categoryId) " +
+            "AND (:manufacturerId IS NULL OR p.manufacturer.id = :manufacturerId)")
+    Page<Product> findByActiveTrueWithFilters(
+            @Param("categoryId") Long categoryId,
+            @Param("manufacturerId") Long manufacturerId,
+            Pageable pageable);
+
+    /**
+     * Find products by multiple criteria with null safety
+     */
+    @Query("SELECT p FROM Product p WHERE p.active = true " +
+            "AND p.show = true " +
+            "AND (:categoryId IS NULL OR p.category.id = :categoryId) " +
+            "AND (:manufacturerId IS NULL OR p.manufacturer.id = :manufacturerId) " +
+            "AND (:minPrice IS NULL OR p.finalPrice >= :minPrice) " +
+            "AND (:maxPrice IS NULL OR p.finalPrice <= :maxPrice) " +
+            "AND (:featured IS NULL OR p.featured = :featured)")
+    Page<Product> findProductsWithMultipleFilters(
+            @Param("categoryId") Long categoryId,
+            @Param("manufacturerId") Long manufacturerId,
+            @Param("minPrice") BigDecimal minPrice,
+            @Param("maxPrice") BigDecimal maxPrice,
+            @Param("featured") Boolean featured,
+            Pageable pageable);
+
     boolean existsByReferenceNumberIgnoreCase(String referenceNumber);
 
     Optional<Product> findByExternalId(Long externalId);

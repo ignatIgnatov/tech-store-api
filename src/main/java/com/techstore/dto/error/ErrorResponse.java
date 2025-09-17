@@ -1,19 +1,39 @@
 package com.techstore.dto.error;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class ErrorResponse {
-    private LocalDateTime timestamp;
+
+    @Builder.Default
+    private LocalDateTime timestamp = LocalDateTime.now();
+
     private int status;
     private String error;
     private String message;
     private String path;
+    private String traceId; // For request tracing
+
+    // For validation errors
     private Map<String, String> validationErrors;
 
-    public ErrorResponse() {
-        this.timestamp = LocalDateTime.now();
-    }
+    // For multiple error details
+    private List<ErrorDetail> details;
+
+    // For additional context
+    private Map<String, Object> metadata;
 
     public ErrorResponse(int status, String error, String message, String path) {
         this();
@@ -23,22 +43,14 @@ public class ErrorResponse {
         this.path = path;
     }
 
-    // Getters and setters
-    public LocalDateTime getTimestamp() { return timestamp; }
-    public void setTimestamp(LocalDateTime timestamp) { this.timestamp = timestamp; }
-
-    public int getStatus() { return status; }
-    public void setStatus(int status) { this.status = status; }
-
-    public String getError() { return error; }
-    public void setError(String error) { this.error = error; }
-
-    public String getMessage() { return message; }
-    public void setMessage(String message) { this.message = message; }
-
-    public String getPath() { return path; }
-    public void setPath(String path) { this.path = path; }
-
-    public Map<String, String> getValidationErrors() { return validationErrors; }
-    public void setValidationErrors(Map<String, String> validationErrors) { this.validationErrors = validationErrors; }
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ErrorDetail {
+        private String field;
+        private Object rejectedValue;
+        private String message;
+        private String code;
+    }
 }

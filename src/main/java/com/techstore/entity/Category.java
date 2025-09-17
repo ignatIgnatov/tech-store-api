@@ -1,38 +1,42 @@
 package com.techstore.entity;
 
-import jakarta.persistence.*;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.Table;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import org.hibernate.search.mapper.pojo.mapping.definition.annotation.FullTextField;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Entity
 @Table(name = "categories")
 @Data
-@EqualsAndHashCode(callSuper = false, exclude = {"parent", "children", "products", "specificationTemplates"})
-public class Category extends BaseAuditEntity {
+@EqualsAndHashCode(callSuper = false, exclude = {"parent", "children", "products"})
+public class Category extends BaseEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "external_id", unique = true, nullable = false)
+    private Long externalId;
 
-    @Column(nullable = false, length = 200)
-    private String name;
+    @FullTextField
+    @Column(name = "name_en", nullable = false, length = 200)
+    private String nameEn;
 
-    @Column(unique = true, nullable = false, length = 200)
+    @FullTextField
+    @Column(name = "name_bg")
+    private String nameBg;
+
+    @Column(length = 200)
     private String slug;
 
-    @Column(columnDefinition = "TEXT")
-    private String description;
-
-    @Column(length = 1000)
-    private String imageUrl;
-
-    @Column(nullable = false)
-    private Boolean active = true;
+    @Column(name = "show_flag", nullable = false)
+    private Boolean show = true;
 
     @Column(nullable = false)
     private Integer sortOrder = 0;
@@ -47,35 +51,7 @@ public class Category extends BaseAuditEntity {
     @OneToMany(mappedBy = "category", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<Product> products = new ArrayList<>();
 
-    @OneToMany(mappedBy = "category", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private List<CategorySpecificationTemplate> specificationTemplates = new ArrayList<>();
-
-    public List<CategorySpecificationTemplate> getRequiredSpecifications() {
-        return specificationTemplates.stream()
-                .filter(CategorySpecificationTemplate::getRequired)
-                .sorted(Comparator.comparing(CategorySpecificationTemplate::getSortOrder))
-                .collect(Collectors.toList());
-    }
-
-    public List<CategorySpecificationTemplate> getFilterableSpecifications() {
-        return specificationTemplates.stream()
-                .filter(CategorySpecificationTemplate::getFilterable)
-                .sorted(Comparator.comparing(CategorySpecificationTemplate::getSortOrder))
-                .collect(Collectors.toList());
-    }
-
     public boolean isParentCategory() {
         return parent == null;
-    }
-
-    public boolean hasChildren() {
-        return children != null && !children.isEmpty();
-    }
-
-    public String getFullPath() {
-        if (parent == null) {
-            return name;
-        }
-        return parent.getFullPath() + " / " + name;
     }
 }

@@ -1,6 +1,6 @@
 package com.techstore.service;
 
-import com.techstore.dto.UserRequestDTO;
+import com.techstore.dto.request.UserRequestDTO;
 import com.techstore.dto.UserResponseDTO;
 import com.techstore.entity.User;
 import com.techstore.exception.DuplicateResourceException;

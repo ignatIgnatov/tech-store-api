@@ -1,8 +1,8 @@
 package com.techstore.util;
 
-import com.techstore.dto.FilterOptionDTO;
-import com.techstore.dto.PriceRangeDTO;
-import com.techstore.dto.RangeDTO;
+import com.techstore.dto.filter.FilterOptionDTO;
+import com.techstore.dto.filter.PriceRangeDTO;
+import com.techstore.dto.filter.RangeDTO;
 import com.techstore.entity.Product;
 
 import java.math.BigDecimal;
@@ -19,13 +19,13 @@ public class FilterUtils {
         }
 
         BigDecimal min = products.stream()
-                .map(Product::getDiscountedPrice)
+                .map(Product::getPriceClientPromo)
                 .filter(Objects::nonNull)
                 .min(BigDecimal::compareTo)
                 .orElse(BigDecimal.ZERO);
 
         BigDecimal max = products.stream()
-                .map(Product::getDiscountedPrice)
+                .map(Product::getPriceClientPromo)
                 .filter(Objects::nonNull)
                 .max(BigDecimal::compareTo)
                 .orElse(new BigDecimal("999999"));

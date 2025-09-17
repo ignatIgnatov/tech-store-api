@@ -1,6 +1,6 @@
 package com.techstore.controller;
 
-import com.techstore.dto.UserRequestDTO;
+import com.techstore.dto.request.UserRequestDTO;
 import com.techstore.dto.UserResponseDTO;
 import com.techstore.service.UserService;
 import jakarta.validation.Valid;

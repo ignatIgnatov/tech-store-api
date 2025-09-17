@@ -1,6 +1,13 @@
 package com.techstore.entity;
 
-import jakarta.persistence.*;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.Table;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import org.springframework.security.core.GrantedAuthority;
@@ -10,16 +17,14 @@ import org.springframework.security.core.userdetails.UserDetails;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
 
 @Entity
 @Table(name = "users")
 @Data
 @EqualsAndHashCode(callSuper = false)
-public class User extends BaseAuditEntity implements UserDetails {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+public class User extends BaseEntity implements UserDetails {
 
     @Column(unique = true, nullable = false, length = 100)
     private String username;
@@ -47,6 +52,21 @@ public class User extends BaseAuditEntity implements UserDetails {
     private Boolean emailVerified = false;
 
     private LocalDateTime lastLoginAt;
+
+    @Column(name = "is_correct", nullable = false)
+    private Boolean isCorrect = true;
+
+    @Column(columnDefinition = "TEXT")
+    private String description;
+
+    @Column(name = "preferred_language")
+    private String preferredLanguage = "bg";
+
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private Set<UserFavorite> favorites = new HashSet<>();
+
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private Set<CartItem> cartItems = new HashSet<>();
 
     public enum Role {
         USER, ADMIN, SUPER_ADMIN

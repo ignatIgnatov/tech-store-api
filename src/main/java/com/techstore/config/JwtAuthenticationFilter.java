@@ -16,6 +16,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Component
 @RequiredArgsConstructor
@@ -25,6 +27,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtUtil jwtUtil;
     private final UserDetailsService userDetailsService;
 
+    private final Map<String, UserDetails> userCache = new ConcurrentHashMap<>();
+    private final Map<String, Long> cacheTimestamps = new ConcurrentHashMap<>();
+    private static final long CACHE_EXPIRY = 5 * 60 * 1000;
+
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
@@ -33,7 +39,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         final String jwt;
         final String username;
 
-        // Skip filter for public endpoints
         String requestPath = request.getRequestURI();
         if (isPublicEndpoint(requestPath)) {
             filterChain.doFilter(request, response);
@@ -50,7 +55,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             username = jwtUtil.extractUsername(jwt);
 
             if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+                // Проверка за кеширан потребител
+                UserDetails userDetails = getCachedUserDetails(username);
+
+                if (userDetails == null) {
+                    userDetails = userDetailsService.loadUserByUsername(username);
+                    cacheUserDetails(username, userDetails);
+                }
 
                 if (jwtUtil.isTokenValid(jwt, userDetails)) {
                     UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
@@ -64,6 +75,32 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private UserDetails getCachedUserDetails(String username) {
+        Long timestamp = cacheTimestamps.get(username);
+        if (timestamp != null && (System.currentTimeMillis() - timestamp) < CACHE_EXPIRY) {
+            return userCache.get(username);
+        }
+        // Изчисти остарели entries
+        cleanupCache();
+        return null;
+    }
+
+    private void cacheUserDetails(String username, UserDetails userDetails) {
+        userCache.put(username, userDetails);
+        cacheTimestamps.put(username, System.currentTimeMillis());
+    }
+
+    private void cleanupCache() {
+        long now = System.currentTimeMillis();
+        cacheTimestamps.entrySet().removeIf(entry -> {
+            if ((now - entry.getValue()) > CACHE_EXPIRY) {
+                userCache.remove(entry.getKey());
+                return true;
+            }
+            return false;
+        });
     }
 
     private boolean isPublicEndpoint(String path) {

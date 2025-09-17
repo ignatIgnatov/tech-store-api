@@ -53,6 +53,7 @@ services:
       - "8080:8080"
     volumes:
       - uploads_data:/app/uploads
+      - ./lucene-indexes:/tmp/lucene/indexes
     depends_on:
       postgres:
         condition: service_healthy

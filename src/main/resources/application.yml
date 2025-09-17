@@ -17,19 +17,28 @@ spring:
         show-sql: false
         properties:
             hibernate:
-                dialect: org.hibernate.dialect.PostgreSQLDialect
+                jdbc:
+                    batch_size: 30
+                order_inserts: true
+                order_updates: true
                 format_sql: true
                 use_sql_comments: true
                 default_batch_fetch_size: 20
+                search:
+                    backend:
+                        type: lucene
+                        directory:
+                            root: /tmp/lucene/indexes
+
 
     # Connection Pool Configuration
     hikari:
-        maximum-pool-size: 20
-        minimum-idle: 5
-        idle-timeout: 600000
-        pool-name: TechStoreHikariCP
+        maximum-pool-size: 3  # Увеличи значително
+        minimum-idle: 10
+        connection-timeout: 10000
+        idle-timeout: 300000
         max-lifetime: 1800000
-        connection-timeout: 30000
+        leak-detection-threshold: 5000
 
     # Jackson Configuration
     jackson:
@@ -56,19 +65,31 @@ server:
     servlet:
         context-path: /
 
-# FIXED LOGGING CONFIGURATION
+# LOGGING CONFIGURATION
 logging:
     level:
         com.techstore: DEBUG
-        org.springframework.security: INFO
-        org.hibernate.SQL: DEBUG
-        org.hibernate.type.descriptor.sql.BasicBinder: TRACE
-        root: INFO
+        org.hibernate.SQL: ERROR
+        org.hibernate.type.descriptor.sql.BasicBinder: ERROR
     pattern:
         console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+        file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    file:
+        name: logs/techstore.log
 
 # Application Specific Configuration
 app:
+    sync:
+        enabled: true
+        cron: "0 0 2 * * *"  # 2:00 AM всеки ден
+        batch-size: 30       # Chunks от 30 записа
+        max-chunk-duration-minutes: 5
+
+    markup:
+        default-percentage: 20.0
+        max-percentage: 200.0
+        min-percentage: -50.0
+
     # JWT Configuration
     jwt:
         secret: ${JWT_SECRET:techStoreSecretKeyThatShouldBeLongAndSecure123456789}
@@ -108,5 +129,13 @@ springdoc:
         path: /v3/api-docs
     swagger-ui:
         path: /swagger-ui.html
+
+vali:
+    api:
+        base-url: https://www.vali.bg/api/v1
+        token: v8GPrGyODgy6Em8VwcYTXB6WJvjYG7qAgYVSmNyMQGWdgT4lVCGAh1a1tR5K
+        timeout: 30000
+        retry-attempts: 3
+        retry-delay: 1000
 
 

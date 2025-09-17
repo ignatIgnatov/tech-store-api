@@ -1,17 +1,14 @@
 package com.techstore.service;
 
-import com.techstore.dto.*;
-import com.techstore.entity.Product;
-import com.techstore.entity.ProductSpecification;
+import com.techstore.dto.CategoryResponseDTO;
+import com.techstore.dto.response.CategorySummaryDTO;
+import com.techstore.dto.request.CategoryRequestDto;
 import com.techstore.entity.Category;
-import com.techstore.entity.Brand;
-import com.techstore.repository.ProductRepository;
-import com.techstore.repository.ProductSpecificationRepository;
-import com.techstore.repository.CategoryRepository;
-import com.techstore.repository.BrandRepository;
-import com.techstore.exception.ResourceNotFoundException;
+import com.techstore.entity.SyncLog;
 import com.techstore.exception.DuplicateResourceException;
-
+import com.techstore.exception.ResourceNotFoundException;
+import com.techstore.repository.CategoryRepository;
+import com.techstore.repository.SyncLogRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -19,7 +16,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -30,10 +26,11 @@ import java.util.stream.Collectors;
 public class CategoryService {
 
     private final CategoryRepository categoryRepository;
+    private final SyncLogRepository syncLogRepository;
 
     @Transactional(readOnly = true)
     public List<CategoryResponseDTO> getAllCategories() {
-        return categoryRepository.findByActiveTrueOrderBySortOrderAscNameAsc()
+        return categoryRepository.findByShowTrueOrderBySortOrderAscNameEnAsc()
                 .stream()
                 .map(this::convertToResponseDTO)
                 .collect(Collectors.toList());
@@ -41,51 +38,60 @@ public class CategoryService {
 
     @Transactional(readOnly = true)
     public Page<CategoryResponseDTO> getAllCategories(Pageable pageable) {
-        return categoryRepository.findByActiveTrue(pageable)
+        return categoryRepository.findByShowTrue(pageable)
                 .map(this::convertToResponseDTO);
     }
 
     @Transactional(readOnly = true)
     public CategoryResponseDTO getCategoryById(Long id) {
-        Category category = categoryRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Category not found with id: " + id));
+        Category category = findById(id);
         return convertToResponseDTO(category);
     }
 
     @Transactional(readOnly = true)
     public CategoryResponseDTO getCategoryBySlug(String slug) {
-        Category category = categoryRepository.findBySlug(slug)
-                .orElseThrow(() -> new ResourceNotFoundException("Category not found with slug: " + slug));
+        Category category = findBySlug(slug);
         return convertToResponseDTO(category);
     }
 
-    @Transactional(readOnly = true)
-    public List<CategoryTreeDTO> getCategoryTree() {
-        List<Category> parentCategories = categoryRepository.findByActiveTrueAndParentIsNullOrderBySortOrderAscNameAsc();
-        return parentCategories.stream()
-                .map(this::convertToTreeDTO)
-                .collect(Collectors.toList());
-    }
+    public CategoryResponseDTO createCategory(CategoryRequestDto extCategory) {
+        SyncLog syncLog = createSyncLog("CATEGORIES");
+        Category category = new Category();
+        category.setExternalId(extCategory.getId());
+        category.setShow(extCategory.getShow());
+        category.setSortOrder(extCategory.getOrder());
 
-    public CategoryResponseDTO createCategory(CategoryRequestDTO requestDTO) {
-        log.info("Creating new category with slug: {}", requestDTO.getSlug());
+        Category parent = findById(extCategory.getParent());
+        category.setParent(parent);
 
-        if (categoryRepository.existsBySlug(requestDTO.getSlug())) {
-            throw new DuplicateResourceException("Category with slug '" + requestDTO.getSlug() + "' already exists");
+        if (extCategory.getName() != null) {
+            extCategory.getName().forEach(name -> {
+                if ("bg".equals(name.getLanguageCode())) {
+                    category.setNameBg(name.getText());
+                } else if ("en".equals(name.getLanguageCode())) {
+                    category.setNameEn(name.getText());
+                }
+            });
         }
 
-        Category category = convertToEntity(requestDTO);
-        category = categoryRepository.save(category);
+        String baseName = category.getNameEn() != null ? category.getNameEn() : category.getNameBg();
+        category.setSlug(generateSlug(baseName));
+
+        categoryRepository.save(category);
+
+        syncLog.setStatus("SUCCESS");
+        syncLog.setRecordsProcessed(1L);
+        syncLog.setRecordsCreated(1L);
+        syncLog.setRecordsUpdated(0L);
 
         log.info("Category created successfully with id: {}", category.getId());
         return convertToResponseDTO(category);
     }
 
-    public CategoryResponseDTO updateCategory(Long id, CategoryRequestDTO requestDTO) {
+    public CategoryResponseDTO updateCategory(Long id, CategoryRequestDto requestDTO) {
         log.info("Updating category with id: {}", id);
 
-        Category existingCategory = categoryRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Category not found with id: " + id));
+        Category existingCategory = findById(id);
 
         if (categoryRepository.existsBySlugAndIdNot(requestDTO.getSlug(), id)) {
             throw new DuplicateResourceException("Category with slug '" + requestDTO.getSlug() + "' already exists");
@@ -104,41 +110,51 @@ public class CategoryService {
         Category category = categoryRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Category not found with id: " + id));
 
-        category.setActive(false);
+        category.setShow(false);
         categoryRepository.save(category);
 
         log.info("Category soft deleted successfully with id: {}", id);
     }
 
-    private Category convertToEntity(CategoryRequestDTO dto) {
-        Category category = new Category();
-        category.setName(dto.getName());
-        category.setSlug(dto.getSlug());
-        category.setDescription(dto.getDescription());
-        category.setImageUrl(dto.getImageUrl());
-        category.setActive(dto.getActive());
-        category.setSortOrder(dto.getSortOrder());
-
-        if (dto.getParentId() != null) {
-            Category parent = categoryRepository.findById(dto.getParentId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Parent category not found with id: " + dto.getParentId()));
-            category.setParent(parent);
-        }
-
-        return category;
+    private Category findById(Long id) {
+        return categoryRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Category not found with id: " + id));
     }
 
-    private void updateCategoryFromDTO(Category category, CategoryRequestDTO dto) {
-        category.setName(dto.getName());
-        category.setSlug(dto.getSlug());
-        category.setDescription(dto.getDescription());
-        category.setImageUrl(dto.getImageUrl());
-        category.setActive(dto.getActive());
-        category.setSortOrder(dto.getSortOrder());
+    private Category findBySlug(String slug) {
+        return categoryRepository.findBySlug(slug)
+                .orElseThrow(() -> new ResourceNotFoundException("Category not found with slug: " + slug));
+    }
 
-        if (dto.getParentId() != null) {
-            Category parent = categoryRepository.findById(dto.getParentId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Parent category not found with id: " + dto.getParentId()));
+    private SyncLog createSyncLog(String syncType) {
+        SyncLog syncLog = new SyncLog();
+        syncLog.setSyncType(syncType);
+        syncLog.setStatus("IN_PROGRESS");
+        return syncLogRepository.save(syncLog);
+    }
+
+    private String generateSlug(String name) {
+        return name == null ? null :
+                name.toLowerCase()
+                        .replaceAll("[^a-z0-9]+", "-")
+                        .replaceAll("^-|-$", "");
+    }
+
+    private void updateCategoryFromDTO(Category category, CategoryRequestDto dto) {
+        if (dto.getName() != null) {
+            dto.getName().forEach(name -> {
+                if ("bg".equals(name.getLanguageCode())) {
+                    category.setNameBg(name.getText());
+                } else if ("en".equals(name.getLanguageCode())) {
+                    category.setNameEn(name.getText());
+                }
+            });
+        }
+        category.setSlug(dto.getSlug());
+        category.setSortOrder(dto.getOrder());
+
+        if (dto.getParent() != null) {
+            Category parent = findById(dto.getParent());
             category.setParent(parent);
         } else {
             category.setParent(null);
@@ -148,47 +164,26 @@ public class CategoryService {
     private CategoryResponseDTO convertToResponseDTO(Category category) {
         return CategoryResponseDTO.builder()
                 .id(category.getId())
-                .name(category.getName())
+                .externalId(category.getExternalId())
+                .nameEn(category.getNameEn())
+                .nameBg(category.getNameBg())
                 .slug(category.getSlug())
-                .description(category.getDescription())
-                .imageUrl(category.getImageUrl())
-                .active(category.getActive())
+                .show(category.getShow())
                 .sortOrder(category.getSortOrder())
                 .parent(category.getParent() != null ? convertToSummaryDTO(category.getParent()) : null)
-                .children(category.getChildren().stream()
-                        .filter(Category::getActive)
-                        .map(this::convertToSummaryDTO)
-                        .collect(Collectors.toList()))
-                .productCount(category.getProducts().size())
                 .createdAt(category.getCreatedAt())
                 .updatedAt(category.getUpdatedAt())
-                .fullPath(category.getFullPath())
                 .isParentCategory(category.isParentCategory())
-                .hasChildren(category.hasChildren())
                 .build();
     }
 
     private CategorySummaryDTO convertToSummaryDTO(Category category) {
         return CategorySummaryDTO.builder()
                 .id(category.getId())
-                .name(category.getName())
+                .nameEn(category.getNameEn())
+                .nameBg(category.getNameBg())
                 .slug(category.getSlug())
-                .active(category.getActive())
-                .build();
-    }
-
-    private CategoryTreeDTO convertToTreeDTO(Category category) {
-        return CategoryTreeDTO.builder()
-                .id(category.getId())
-                .name(category.getName())
-                .slug(category.getSlug())
-                .active(category.getActive())
-                .sortOrder(category.getSortOrder())
-                .productCount(category.getProducts().size())
-                .children(category.getChildren().stream()
-                        .filter(Category::getActive)
-                        .map(this::convertToTreeDTO)
-                        .collect(Collectors.toList()))
+                .show(category.getShow())
                 .build();
     }
 }

@@ -1,14 +1,13 @@
 package com.techstore.service;
 
-import com.techstore.dto.AdvancedFilterRequestDTO;
-import com.techstore.dto.ProductSummaryDTO;
-import com.techstore.dto.SpecificationFilterValueDTO;
-import com.techstore.entity.CategorySpecificationTemplate;
+import com.techstore.dto.filter.AdvancedFilterRequestDTO;
+import com.techstore.dto.ProductResponseDTO;
+import com.techstore.dto.response.CategorySummaryDTO;
+import com.techstore.dto.response.ManufacturerSummaryDto;
+import com.techstore.entity.Category;
+import com.techstore.entity.Manufacturer;
 import com.techstore.entity.Product;
-import com.techstore.exception.ResourceNotFoundException;
-import com.techstore.repository.CategorySpecificationTemplateRepository;
 import com.techstore.repository.ProductRepository;
-import com.techstore.repository.ProductSpecificationRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -30,13 +29,11 @@ import java.util.Set;
 public class AdvancedFilteringService {
 
     private final ProductRepository productRepository;
-    private final ProductSpecificationRepository specificationRepository;
-    private final CategorySpecificationTemplateRepository templateRepository;
 
     /**
      * Advanced product filtering with specification-based filters
      */
-    public Page<ProductSummaryDTO> filterProductsAdvanced(AdvancedFilterRequestDTO filterRequest, Pageable pageable) {
+    public Page<ProductResponseDTO> filterProductsAdvanced(AdvancedFilterRequestDTO filterRequest, Pageable pageable) {
         // Build dynamic query based on filters
         List<Product> filteredProducts = buildFilteredProductQuery(filterRequest);
 
@@ -48,12 +45,12 @@ public class AdvancedFilteringService {
 
         Page<Product> productPage = new PageImpl<>(pageContent, pageable, filteredProducts.size());
 
-        return productPage.map(this::convertToSummaryDTO);
+        return productPage.map(this::convertToResponseDTO);
     }
 
     private List<Product> buildFilteredProductQuery(AdvancedFilterRequestDTO filterRequest) {
         // Start with base query
-        Set<Product> candidates = new HashSet<>(productRepository.findByActiveTrueOrderByNameAsc());
+        Set<Product> candidates = new HashSet<>(productRepository.findByActiveTrueOrderByNameEnAsc());
 
         // Apply category filter
         if (filterRequest.getCategoryId() != null) {
@@ -62,9 +59,9 @@ public class AdvancedFilteringService {
         }
 
         // Apply brand filter
-        if (filterRequest.getBrandId() != null) {
-            candidates.retainAll(productRepository.findByActiveTrueAndBrandId(
-                    filterRequest.getBrandId(), Pageable.unpaged()).getContent());
+        if (filterRequest.getManufacturerId() != null) {
+            candidates.retainAll(productRepository.findByActiveTrueAndManufacturerId(
+                    filterRequest.getManufacturerId(), Pageable.unpaged()).getContent());
         }
 
         // Apply price range filter
@@ -72,14 +69,6 @@ public class AdvancedFilteringService {
             BigDecimal min = filterRequest.getMinPrice() != null ? filterRequest.getMinPrice() : BigDecimal.ZERO;
             BigDecimal max = filterRequest.getMaxPrice() != null ? filterRequest.getMaxPrice() : new BigDecimal("999999");
             candidates.retainAll(productRepository.findByPriceRange(min, max, Pageable.unpaged()).getContent());
-        }
-
-        // Apply specification filters
-        if (filterRequest.getSpecificationFilters() != null) {
-            for (SpecificationFilterValueDTO specFilter : filterRequest.getSpecificationFilters()) {
-                Set<Product> specMatches = filterBySpecification(specFilter);
-                candidates.retainAll(specMatches);
-            }
         }
 
         // Apply text search
@@ -90,7 +79,7 @@ public class AdvancedFilteringService {
 
         // Apply availability filter
         if (filterRequest.getInStockOnly() != null && filterRequest.getInStockOnly()) {
-            candidates.removeIf(product -> product.getStockQuantity() <= 0);
+            candidates.removeIf(product -> product.getStatus().getCode() == 0);
         }
 
         // Apply sale filter
@@ -101,87 +90,69 @@ public class AdvancedFilteringService {
         return new ArrayList<>(candidates);
     }
 
-    private Set<Product> filterBySpecification(SpecificationFilterValueDTO specFilter) {
-        CategorySpecificationTemplate template = templateRepository.findById(specFilter.getTemplateId())
-                .orElseThrow(() -> new ResourceNotFoundException("Template not found"));
+    private ProductResponseDTO convertToResponseDTO(Product product) {
+        ProductResponseDTO dto = new ProductResponseDTO();
 
-        switch (template.getType()) {
-            case NUMBER:
-            case DECIMAL:
-                return filterByNumericRange(specFilter);
-            case DROPDOWN:
-            case MULTI_SELECT:
-                return filterByExactValues(specFilter);
-            case BOOLEAN:
-                return filterByBooleanValue(specFilter);
-            case RANGE:
-                return filterByRange(specFilter);
-            default:
-                return filterByTextValue(specFilter);
+        dto.setId(product.getId());
+        dto.setNameEn(product.getNameEn());
+        dto.setNameBg(product.getNameBg());
+        dto.setDescriptionEn(product.getDescriptionEn());
+        dto.setDescriptionBg(product.getDescriptionBg());
+
+        dto.setReferenceNumber(product.getReferenceNumber());
+        dto.setModel(product.getModel());
+        dto.setBarcode(product.getBarcode());
+
+        dto.setPriceClient(product.getPriceClient());
+        dto.setPricePartner(product.getPricePartner());
+        dto.setPricePromo(product.getPricePromo());
+        dto.setPriceClientPromo(product.getPriceClientPromo());
+        dto.setMarkupPercentage(product.getMarkupPercentage());
+        dto.setFinalPrice(product.getFinalPrice());
+        dto.setDiscount(product.getDiscount());
+
+        dto.setActive(product.getActive());
+        dto.setFeatured(product.getFeatured());
+        dto.setShow(product.getShow());
+
+        dto.setPrimaryImageUrl(product.getPrimaryImageUrl());
+        dto.setAdditionalImages(product.getAdditionalImages());
+
+        dto.setWarranty(product.getWarranty());
+        dto.setWeight(product.getWeight());
+        dto.setSpecifications(product.getProductParameters().stream().toList());
+
+        if (product.getCategory() != null) {
+            dto.setCategory(convertToCategorySummary(product.getCategory()));
         }
-    }
 
-    private Set<Product> filterByNumericRange(SpecificationFilterValueDTO specFilter) {
-        if (specFilter.getMinValue() != null || specFilter.getMaxValue() != null) {
-            BigDecimal min = specFilter.getMinValue() != null ? specFilter.getMinValue() : new BigDecimal("-999999");
-            BigDecimal max = specFilter.getMaxValue() != null ? specFilter.getMaxValue() : new BigDecimal("999999");
-
-            return new HashSet<>(specificationRepository.findProductsByNumericRange(
-                    specFilter.getTemplateId(), min, max));
+        if (product.getManufacturer() != null) {
+            dto.setManufacturer(convertToManufacturerSummary(product.getManufacturer()));
         }
-        return new HashSet<>();
+
+        dto.setCreatedAt(product.getCreatedAt());
+        dto.setUpdatedAt(product.getUpdatedAt());
+        dto.setOnSale(product.isOnSale());
+        dto.setStatus(product.getStatus() != null ? product.getStatus().getCode() : 0);
+        dto.setWorkflowId(product.getWorkflowId());
+
+        return dto;
     }
 
-    private Set<Product> filterByExactValues(SpecificationFilterValueDTO specFilter) {
-        if (specFilter.getValues() != null && !specFilter.getValues().isEmpty()) {
-            Set<Product> matches = new HashSet<>();
-            for (String value : specFilter.getValues()) {
-                matches.addAll(specificationRepository.findProductsBySpecification(
-                        specFilter.getTemplateId(), value));
-            }
-            return matches;
-        }
-        return new HashSet<>();
+    private CategorySummaryDTO convertToCategorySummary(Category category) {
+        return CategorySummaryDTO.builder()
+                .id(category.getId())
+                .nameEn(category.getNameEn())
+                .nameBg(category.getNameBg())
+                .slug(category.getSlug())
+                .show(category.getShow())
+                .build();
     }
 
-    private Set<Product> filterByBooleanValue(SpecificationFilterValueDTO specFilter) {
-        if (specFilter.getBooleanValue() != null) {
-            String value = specFilter.getBooleanValue() ? "true" : "false";
-            return new HashSet<>(specificationRepository.findProductsBySpecification(
-                    specFilter.getTemplateId(), value));
-        }
-        return new HashSet<>();
-    }
-
-    private Set<Product> filterByRange(SpecificationFilterValueDTO specFilter) {
-        // For range specifications (like "100-200"), we need custom logic
-        return new HashSet<>(); // Implementation depends on your range format
-    }
-
-    private Set<Product> filterByTextValue(SpecificationFilterValueDTO specFilter) {
-        if (specFilter.getTextValue() != null) {
-            return new HashSet<>(specificationRepository.findProductsBySpecification(
-                    specFilter.getTemplateId(), specFilter.getTextValue()));
-        }
-        return new HashSet<>();
-    }
-
-    private ProductSummaryDTO convertToSummaryDTO(Product product) {
-        return ProductSummaryDTO.builder()
-                .id(product.getId())
-                .name(product.getName())
-                .sku(product.getSku())
-                .price(product.getPrice())
-                .discount(product.getDiscount())
-                .discountedPrice(product.getDiscountedPrice())
-                .stockQuantity(product.getStockQuantity())
-                .active(product.getActive())
-                .featured(product.getFeatured())
-                .imageUrl(product.getImageUrl())
-                .categoryName(product.getCategory().getName())
-                .brandName(product.getBrand().getName())
-                .inStock(product.isInStock())
-                .onSale(product.isOnSale())
+    private ManufacturerSummaryDto convertToManufacturerSummary(Manufacturer manufacturer) {
+        return ManufacturerSummaryDto.builder()
+                .id(manufacturer.getId())
+                .name(manufacturer.getName())
                 .build();
     }
 }

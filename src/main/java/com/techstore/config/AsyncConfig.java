@@ -28,7 +28,7 @@ public class AsyncConfig implements AsyncConfigurer {
         executor.setAwaitTerminationSeconds(60);
         executor.initialize();
 
-        log.info("Configured async task executor with core pool size: {}, max pool size: {}",
+        log.debug("Configured async task executor with core pool size: {}, max pool size: {}",
                 executor.getCorePoolSize(), executor.getMaxPoolSize());
 
         return executor;

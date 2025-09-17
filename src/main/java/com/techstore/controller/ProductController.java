@@ -56,20 +56,21 @@ public class ProductController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "name") String sortBy,
-            @RequestParam(defaultValue = "asc") String sortDir) {
+            @RequestParam(defaultValue = "asc") String sortDir,
+            @RequestParam(defaultValue = "en") String language) {
 
         Sort sort = sortDir.equalsIgnoreCase("desc") ?
                 Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
         Pageable pageable = PageRequest.of(page, size, sort);
 
-        Page<ProductResponseDTO> products = productService.getAllProducts(pageable);
+        Page<ProductResponseDTO> products = productService.getAllProducts(pageable, language);
         return ResponseEntity.ok(products);
     }
 
     @GetMapping("/{id}")
     @Operation(summary = "Get product by ID", description = "Retrieve detailed product information")
-    public ResponseEntity<ProductResponseDTO> getProductById(@PathVariable Long id) {
-        ProductResponseDTO product = productService.getProductById(id);
+    public ResponseEntity<ProductResponseDTO> getProductById(@PathVariable Long id,  @RequestParam(defaultValue = "en") String language) {
+        ProductResponseDTO product = productService.getProductById(id, language);
         return ResponseEntity.ok(product);
     }
 
@@ -80,13 +81,14 @@ public class ProductController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "id") String sortBy,
-            @RequestParam(defaultValue = "asc") String sortDir) {
+            @RequestParam(defaultValue = "asc") String sortDir,
+            @RequestParam(defaultValue = "en") String language) {
 
         Sort sort = sortDir.equalsIgnoreCase("desc") ?
                 Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
         Pageable pageable = PageRequest.of(page, size, sort);
 
-        Page<ProductResponseDTO> products = productService.getProductsByCategory(categoryId, pageable);
+        Page<ProductResponseDTO> products = productService.getProductsByCategory(categoryId, pageable, language);
         return ResponseEntity.ok(products);
     }
 
@@ -97,13 +99,14 @@ public class ProductController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "name") String sortBy,
-            @RequestParam(defaultValue = "asc") String sortDir) {
+            @RequestParam(defaultValue = "asc") String sortDir,
+            @RequestParam(defaultValue = "en") String language) {
 
         Sort sort = sortDir.equalsIgnoreCase("desc") ?
                 Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
         Pageable pageable = PageRequest.of(page, size, sort);
 
-        Page<ProductResponseDTO> products = productService.getProductsByBrand(brandId, pageable);
+        Page<ProductResponseDTO> products = productService.getProductsByBrand(brandId, pageable, language);
         return ResponseEntity.ok(products);
     }
 
@@ -111,10 +114,11 @@ public class ProductController {
     @Operation(summary = "Get featured products", description = "Retrieve featured products")
     public ResponseEntity<Page<ProductResponseDTO>> getFeaturedProducts(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "en") String language) {
 
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        Page<ProductResponseDTO> products = productService.getFeaturedProducts(pageable);
+        Page<ProductResponseDTO> products = productService.getFeaturedProducts(pageable, language);
         return ResponseEntity.ok(products);
     }
 
@@ -122,10 +126,11 @@ public class ProductController {
     @Operation(summary = "Get products on sale", description = "Retrieve products with discounts")
     public ResponseEntity<Page<ProductResponseDTO>> getProductsOnSale(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "en") String language) {
 
         Pageable pageable = PageRequest.of(page, size, Sort.by("discount").descending());
-        Page<ProductResponseDTO> products = productService.getProductsOnSale(pageable);
+        Page<ProductResponseDTO> products = productService.getProductsOnSale(pageable, language);
         return ResponseEntity.ok(products);
     }
 
@@ -136,13 +141,14 @@ public class ProductController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "name") String sortBy,
-            @RequestParam(defaultValue = "asc") String sortDir) {
+            @RequestParam(defaultValue = "asc") String sortDir,
+            @RequestParam(defaultValue = "en") String language) {
 
         Sort sort = sortDir.equalsIgnoreCase("desc") ?
                 Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
         Pageable pageable = PageRequest.of(page, size, sort);
 
-        Page<ProductResponseDTO> products = productService.searchProducts(q, pageable);
+        Page<ProductResponseDTO> products = productService.searchProducts(q, pageable, language);
         return ResponseEntity.ok(products);
     }
 
@@ -159,7 +165,8 @@ public class ProductController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "name") String sortBy,
-            @RequestParam(defaultValue = "asc") String sortDir) {
+            @RequestParam(defaultValue = "asc") String sortDir,
+            @RequestParam(defaultValue = "en") String language) {
 
         Sort sort = sortDir.equalsIgnoreCase("desc") ?
                 Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
@@ -168,7 +175,7 @@ public class ProductController {
         ProductStatus productStatus = status != null ? ProductStatus.valueOf(status) : null;
 
         Page<ProductResponseDTO> products = productService.filterProducts(
-                categoryId, brandId, minPrice, maxPrice, productStatus, onSale, q, pageable);
+                categoryId, brandId, minPrice, maxPrice, productStatus, onSale, q, pageable, language);
         return ResponseEntity.ok(products);
     }
 
@@ -179,13 +186,14 @@ public class ProductController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "name") String sortBy,
-            @RequestParam(defaultValue = "asc") String sortDir) {
+            @RequestParam(defaultValue = "asc") String sortDir,
+            @RequestParam(defaultValue = "en") String language) {
 
         Sort sort = sortDir.equalsIgnoreCase("desc") ?
                 Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
         Pageable pageable = PageRequest.of(page, size, sort);
 
-        Page<ProductResponseDTO> products = filteringService.filterProductsAdvanced(filterRequest, pageable);
+        Page<ProductResponseDTO> products = filteringService.filterProductsAdvanced(filterRequest, pageable, language);
         return ResponseEntity.ok(products);
     }
 
@@ -193,9 +201,10 @@ public class ProductController {
     @Operation(summary = "Get related products", description = "Get products related to the specified product")
     public ResponseEntity<List<ProductResponseDTO>> getRelatedProducts(
             @PathVariable Long id,
-            @RequestParam(defaultValue = "8") int limit) {
+            @RequestParam(defaultValue = "8") int limit,
+            @RequestParam(defaultValue = "en") String language) {
 
-        List<ProductResponseDTO> relatedProducts = productService.getRelatedProducts(id, limit);
+        List<ProductResponseDTO> relatedProducts = productService.getRelatedProducts(id, limit, language);
         return ResponseEntity.ok(relatedProducts);
     }
 
@@ -205,14 +214,15 @@ public class ProductController {
     public ResponseEntity<ProductResponseDTO> createProductWithImages(
             @RequestPart("product") @Valid ProductCreateRequestDTO productData,
             @RequestPart("primaryImage") MultipartFile primaryImage,
-            @RequestPart(value = "additionalImages", required = false) List<MultipartFile> additionalImages) {
+            @RequestPart(value = "additionalImages", required = false) List<MultipartFile> additionalImages,
+            @RequestParam(defaultValue = "en") String language) {
 
         log.info("Creating product with reference number: {} and {} images",
                 productData.getReferenceNumber(),
                 1 + (additionalImages != null ? additionalImages.size() : 0));
 
         ProductResponseDTO createdProduct = productService.createProductWithImages(
-                productData, primaryImage, additionalImages);
+                productData, primaryImage, additionalImages, language);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(createdProduct);
     }
@@ -225,12 +235,13 @@ public class ProductController {
             @RequestPart("product") @Valid ProductUpdateRequestDTO productData,
             @RequestPart(value = "newPrimaryImage", required = false) MultipartFile newPrimaryImage,
             @RequestPart(value = "newAdditionalImages", required = false) List<MultipartFile> newAdditionalImages,
-            @RequestPart(value = "imageOperations", required = false) ProductImageOperationsDTO imageOperations) {
+            @RequestPart(value = "imageOperations", required = false) ProductImageOperationsDTO imageOperations,
+            @RequestParam(defaultValue = "en") String language) {
 
         log.info("Updating product with id: {} with image operations", id);
 
         ProductResponseDTO updatedProduct = productService.updateProductWithImages(
-                id, productData, newPrimaryImage, newAdditionalImages, imageOperations);
+                id, productData, newPrimaryImage, newAdditionalImages, imageOperations, language);
 
         return ResponseEntity.ok(updatedProduct);
     }
@@ -308,10 +319,11 @@ public class ProductController {
     @Operation(summary = "Reorder product images", description = "Reorder existing product images")
     public ResponseEntity<ProductResponseDTO> reorderProductImages(
             @PathVariable Long id,
-            @RequestBody @Valid List<ProductImageUpdateDTO> images) {
+            @RequestBody @Valid List<ProductImageUpdateDTO> images,
+            @RequestParam(defaultValue = "en") String language) {
 
         log.info("Reordering images for product {}", id);
-        ProductResponseDTO updatedProduct = productService.reorderProductImages(id, images);
+        ProductResponseDTO updatedProduct = productService.reorderProductImages(id, images, language);
         return ResponseEntity.ok(updatedProduct);
     }
 }

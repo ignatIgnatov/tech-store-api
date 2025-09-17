@@ -61,9 +61,9 @@ spring:
 
 aws:
     s3:
-        access-key: ${AWS_ACCESS_KEY}
-        secret-key: ${AWS_SECRET_KEY}
-        bucket-name: ${AWS_S3_BUCKET_NAME}
+        access-key: ${AWS_ACCESS_KEY:aws-s3-key}
+        secret-key: ${AWS_SECRET_KEY:aws-s3-secret-key}
+        bucket-name: ${AWS_S3_BUCKET_NAME:aws-s3-name}
         region: ${AWS_S3_REGION:us-east-1}
 
 # Server Configuration
@@ -75,9 +75,15 @@ server:
 # LOGGING CONFIGURATION
 logging:
     level:
-        com.techstore: DEBUG
-        org.hibernate.SQL: ERROR
+        org.hibernate.engine.jdbc.connections.internal.DriverManagerConnectionProviderImpl: WARN
+        org.hibernate.SQL: WARN
+        org.hibernate.type.descriptor.sql: WARN
+        org.hibernate.tool.schema: WARN
+        com.zaxxer.hikari: WARN
+        org.springframework.security.config.annotation.authentication.configuration.InitializeUserDetailsBeanManagerConfigurer: ERROR
+        org.springframework.security.web.FilterChainProxy: WARN
         org.hibernate.type.descriptor.sql.BasicBinder: ERROR
+        com.techstore: DEBUG
     pattern:
         console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
         file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"

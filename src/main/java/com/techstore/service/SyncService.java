@@ -25,7 +25,6 @@ import com.techstore.repository.ParameterRepository;
 import com.techstore.repository.ProductDocumentRepository;
 import com.techstore.repository.ProductRepository;
 import com.techstore.repository.SyncLogRepository;
-import com.zaxxer.hikari.HikariDataSource;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -107,27 +106,27 @@ public class SyncService {
     }
 
     // ============ MONITORING ============
-    @Scheduled(fixedRate = 300000) // Every 5 minutes
-    public void monitorSyncHealth() {
-        try {
-            List<SyncLog> stuckSyncs = syncLogRepository.findByStatusAndCreatedAtBefore(
-                    LOG_STATUS_IN_PROGRESS, LocalDateTime.now().minusHours(2));
-
-            if (!stuckSyncs.isEmpty()) {
-                log.warn("Found {} stuck sync processes", stuckSyncs.size());
-                stuckSyncs.forEach(sync -> {
-                    sync.setStatus(LOG_STATUS_FAILED);
-                    sync.setErrorMessage("Stuck - marked as failed by monitor");
-                    syncLogRepository.save(sync);
-                });
-            }
-
-            monitorConnectionPool();
-
-        } catch (Exception e) {
-            log.error("Error during sync health check", e);
-        }
-    }
+//    @Scheduled(fixedRate = 300000) // Every 5 minutes
+//    public void monitorSyncHealth() {
+//        try {
+//            List<SyncLog> stuckSyncs = syncLogRepository.findByStatusAndCreatedAtBefore(
+//                    LOG_STATUS_IN_PROGRESS, LocalDateTime.now().minusHours(2));
+//
+//            if (!stuckSyncs.isEmpty()) {
+//                log.warn("Found {} stuck sync processes", stuckSyncs.size());
+//                stuckSyncs.forEach(sync -> {
+//                    sync.setStatus(LOG_STATUS_FAILED);
+//                    sync.setErrorMessage("Stuck - marked as failed by monitor");
+//                    syncLogRepository.save(sync);
+//                });
+//            }
+//
+//            monitorConnectionPool();
+//
+//        } catch (Exception e) {
+//            log.error("Error during sync health check", e);
+//        }
+//    }
 
     // ============ CATEGORIES SYNC ============
     @Transactional
@@ -629,24 +628,24 @@ public class SyncService {
         }
     }
 
-    private void monitorConnectionPool() {
-        try {
-            if (dataSource instanceof HikariDataSource) {
-                HikariDataSource ds = (HikariDataSource) dataSource;
-                int active = ds.getHikariPoolMXBean().getActiveConnections();
-                int total = ds.getHikariPoolMXBean().getTotalConnections();
-                int idle = ds.getHikariPoolMXBean().getIdleConnections();
-
-                log.debug("Connection Pool Status - Active: {}, Idle: {}, Total: {}", active, idle, total);
-
-                if (active > (total * 0.8)) {
-                    log.warn("Connection pool usage high: {}/{} ({}%)", active, total, (active * 100 / total));
-                }
-            }
-        } catch (Exception e) {
-            log.debug("Could not retrieve connection pool stats: {}", e.getMessage());
-        }
-    }
+//    private void monitorConnectionPool() {
+//        try {
+//            if (dataSource instanceof HikariDataSource) {
+//                HikariDataSource ds = (HikariDataSource) dataSource;
+//                int active = ds.getHikariPoolMXBean().getActiveConnections();
+//                int total = ds.getHikariPoolMXBean().getTotalConnections();
+//                int idle = ds.getHikariPoolMXBean().getIdleConnections();
+//
+//                log.debug("Connection Pool Status - Active: {}, Idle: {}, Total: {}", active, idle, total);
+//
+//                if (active > (total * 0.8)) {
+//                    log.warn("Connection pool usage high: {}/{} ({}%)", active, total, (active * 100 / total));
+//                }
+//            }
+//        } catch (Exception e) {
+//            log.debug("Could not retrieve connection pool stats: {}", e.getMessage());
+//        }
+//    }
 
     private DocumentChunkResult processDocumentsChunk(List<DocumentRequestDto> documents) {
         long processed = 0, created = 0, updated = 0, errors = 0;

@@ -12,6 +12,7 @@ import com.techstore.dto.request.ProductUpdateRequestDTO;
 import com.techstore.dto.response.CategorySummaryDTO;
 import com.techstore.dto.response.ManufacturerSummaryDto;
 import com.techstore.dto.response.ProductImageUploadResponseDTO;
+import com.techstore.dto.response.ProductParameterResponseDto;
 import com.techstore.entity.Category;
 import com.techstore.entity.Manufacturer;
 import com.techstore.entity.Parameter;
@@ -22,6 +23,7 @@ import com.techstore.enums.ProductStatus;
 import com.techstore.exception.BusinessLogicException;
 import com.techstore.exception.DuplicateResourceException;
 import com.techstore.exception.ResourceNotFoundException;
+import com.techstore.mapper.ParameterMapper;
 import com.techstore.repository.CategoryRepository;
 import com.techstore.repository.ManufacturerRepository;
 import com.techstore.repository.ParameterOptionRepository;
@@ -56,12 +58,13 @@ public class ProductService {
     private final ParameterRepository parameterRepository;
     private final ParameterOptionRepository parameterOptionRepository;
     private final S3Service s3Service;
+    private final ParameterMapper parameterMapper;
 
     @Transactional
     public ProductResponseDTO createProductWithImages(
             ProductCreateRequestDTO productData,
             MultipartFile primaryImage,
-            List<MultipartFile> additionalImages) {
+            List<MultipartFile> additionalImages, String lang) {
 
         if (primaryImage == null || primaryImage.isEmpty()) {
             throw new BusinessLogicException("Primary image is required for product creation");
@@ -103,7 +106,7 @@ public class ProductService {
             log.info("Product created successfully with id: {} and {} images",
                     product.getId(), uploadedImageUrls.size());
 
-            return convertToResponseDTO(product);
+            return convertToResponseDTO(product, lang);
 
         } catch (Exception e) {
             log.error("Product creation failed, cleaning up uploaded images", e);
@@ -118,7 +121,7 @@ public class ProductService {
             ProductUpdateRequestDTO productData,
             MultipartFile newPrimaryImage,
             List<MultipartFile> newAdditionalImages,
-            ProductImageOperationsDTO imageOperations) {
+            ProductImageOperationsDTO imageOperations, String lang) {
 
         Product product = productRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + id));
@@ -189,7 +192,7 @@ public class ProductService {
             }
 
             log.info("Product updated successfully with id: {}", product.getId());
-            return convertToResponseDTO(product);
+            return convertToResponseDTO(product, lang);
 
         } catch (Exception e) {
             log.error("Product update failed, cleaning up new uploads", e);
@@ -274,60 +277,60 @@ public class ProductService {
     }
 
     @Transactional(readOnly = true)
-    public Page<ProductResponseDTO> getAllProducts(Pageable pageable) {
+    public Page<ProductResponseDTO> getAllProducts(Pageable pageable, String lang) {
         return productRepository.findByActiveTrue(pageable)
-                .map(this::convertToResponseDTO);
+                .map(p -> convertToResponseDTO(p, lang));
     }
 
     @Transactional(readOnly = true)
-    public ProductResponseDTO getProductById(Long id) {
+    public ProductResponseDTO getProductById(Long id, String lang) {
         Product product = productRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + id));
-        return convertToResponseDTO(product);
+        return convertToResponseDTO(product, lang);
     }
 
     @Transactional(readOnly = true)
-    public Page<ProductResponseDTO> getProductsByCategory(Long categoryId, Pageable pageable) {
+    public Page<ProductResponseDTO> getProductsByCategory(Long categoryId, Pageable pageable, String lang) {
         return productRepository.findByActiveTrueAndCategoryId(categoryId, pageable)
-                .map(this::convertToResponseDTO);
+                .map(p -> convertToResponseDTO(p, lang));
     }
 
     @Transactional(readOnly = true)
-    public Page<ProductResponseDTO> getProductsByBrand(Long brandId, Pageable pageable) {
+    public Page<ProductResponseDTO> getProductsByBrand(Long brandId, Pageable pageable, String lang) {
         return productRepository.findByActiveTrueAndManufacturerId(brandId, pageable)
-                .map(this::convertToResponseDTO);
+                .map(p -> convertToResponseDTO(p, lang));
     }
 
     @Transactional(readOnly = true)
-    public Page<ProductResponseDTO> getFeaturedProducts(Pageable pageable) {
+    public Page<ProductResponseDTO> getFeaturedProducts(Pageable pageable, String lang) {
         return productRepository.findByActiveTrueAndFeaturedTrue(pageable)
-                .map(this::convertToResponseDTO);
+                .map(p -> convertToResponseDTO(p, lang));
     }
 
     @Transactional(readOnly = true)
-    public Page<ProductResponseDTO> getProductsOnSale(Pageable pageable) {
+    public Page<ProductResponseDTO> getProductsOnSale(Pageable pageable, String lang) {
         return productRepository.findProductsOnSale(pageable)
-                .map(this::convertToResponseDTO);
+                .map(p -> convertToResponseDTO(p, lang));
     }
 
     @Transactional(readOnly = true)
-    public Page<ProductResponseDTO> searchProducts(String query, Pageable pageable) {
+    public Page<ProductResponseDTO> searchProducts(String query, Pageable pageable, String lang) {
         return productRepository.searchProducts(query, pageable)
-                .map(this::convertToResponseDTO);
+                .map(p -> convertToResponseDTO(p, lang));
     }
 
     @Transactional(readOnly = true)
     public Page<ProductResponseDTO> filterProducts(Long categoryId, Long brandId,
                                                    BigDecimal minPrice, BigDecimal maxPrice,
                                                    ProductStatus status, Boolean onSale, String query,
-                                                   Pageable pageable) {
+                                                   Pageable pageable, String lang) {
         return productRepository.findProductsWithFilters(categoryId, brandId, minPrice, maxPrice,
                         status, onSale, query, pageable)
-                .map(this::convertToResponseDTO);
+                .map(p -> convertToResponseDTO(p, lang));
     }
 
     @Transactional(readOnly = true)
-    public List<ProductResponseDTO> getRelatedProducts(Long productId, int limit) {
+    public List<ProductResponseDTO> getRelatedProducts(Long productId, int limit, String lang) {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
 
@@ -335,12 +338,12 @@ public class ProductService {
         return productRepository.findRelatedProducts(productId, product.getCategory().getId(),
                         product.getManufacturer().getId(), pageable)
                 .stream()
-                .map(this::convertToResponseDTO)
+                .map(p -> convertToResponseDTO(p, lang))
                 .toList();
     }
 
     @Transactional
-    public ProductResponseDTO createProductRest(ProductCreateRequestDTO dto) {
+    public ProductResponseDTO createProductRest(ProductCreateRequestDTO dto, String lang) {
         if (productRepository.existsByReferenceNumberIgnoreCase(dto.getReferenceNumber())) {
             throw new DuplicateResourceException("Product already exists with reference number: " + dto.getReferenceNumber());
         }
@@ -350,11 +353,11 @@ public class ProductService {
         product = productRepository.save(product);
 
         log.info("Created product via REST API with id: {} and reference: {}", product.getId(), product.getReferenceNumber());
-        return convertToResponseDTO(product);
+        return convertToResponseDTO(product, lang);
     }
 
     @Transactional
-    public ProductResponseDTO updateProductRest(Long id, ProductUpdateRequestDTO dto) {
+    public ProductResponseDTO updateProductRest(Long id, ProductUpdateRequestDTO dto, String lang) {
         Product product = productRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + id));
 
@@ -376,18 +379,18 @@ public class ProductService {
         product = productRepository.save(product);
 
         log.info("Updated product via REST API with id: {} and reference: {}", product.getId(), product.getReferenceNumber());
-        return convertToResponseDTO(product);
+        return convertToResponseDTO(product, lang);
     }
 
     @Transactional
-    public ProductResponseDTO reorderProductImages(Long productId, List<ProductImageUpdateDTO> images) {
+    public ProductResponseDTO reorderProductImages(Long productId, List<ProductImageUpdateDTO> images, String lang) {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
 
         handleImageReordering(product, images);
         product = productRepository.save(product);
 
-        return convertToResponseDTO(product);
+        return convertToResponseDTO(product, lang);
     }
 
     private void updateProductFieldsFromExternal(Product product, ProductRequestDto dto) {
@@ -498,7 +501,23 @@ public class ProductService {
         log.info("Product permanently deleted successfully with id: {}", id);
     }
 
-    private ProductResponseDTO convertToResponseDTO(Product product) {
+    @Transactional(readOnly = true)
+    public String getOriginalImageUrl(Long productId, boolean isPrimary, int index) {
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
+
+        if (isPrimary) {
+            return product.getPrimaryImageUrl();
+        } else {
+            if (product.getAdditionalImages() != null && index >= 0 && index < product.getAdditionalImages().size()) {
+                return product.getAdditionalImages().get(index);
+            }
+        }
+
+        return null;
+    }
+
+    private ProductResponseDTO convertToResponseDTO(Product product, String lang) {
         ProductResponseDTO dto = new ProductResponseDTO();
 
         dto.setId(product.getId());
@@ -523,12 +542,26 @@ public class ProductService {
         dto.setFeatured(product.getFeatured());
         dto.setShow(product.getShow());
 
-        dto.setPrimaryImageUrl(product.getPrimaryImageUrl());
-        dto.setAdditionalImages(product.getAdditionalImages());
+//        dto.setPrimaryImageUrl(product.getPrimaryImageUrl());
+//        dto.setAdditionalImages(product.getAdditionalImages());
+
+        if (product.getPrimaryImageUrl() != null) {
+            dto.setPrimaryImageUrl("/api/images/product/" + product.getId() + "/primary");
+        }
+
+        if (product.getAdditionalImages() != null && !product.getAdditionalImages().isEmpty()) {
+            List<String> proxyAdditionalUrls = new ArrayList<>();
+            for (int i = 0; i < product.getAdditionalImages().size(); i++) {
+                proxyAdditionalUrls.add("/api/images/product/" + product.getId() + "/additional/" + i);
+            }
+            dto.setAdditionalImages(proxyAdditionalUrls);
+        }
 
         dto.setWarranty(product.getWarranty());
         dto.setWeight(product.getWeight());
-        dto.setSpecifications(product.getProductParameters().stream().toList());
+        dto.setSpecifications(product.getProductParameters().stream()
+                .map(productParameter -> convertToProductParameterResponse(productParameter, lang))
+                .toList());
 
         if (product.getCategory() != null) {
             dto.setCategory(convertToCategorySummary(product.getCategory()));
@@ -545,6 +578,16 @@ public class ProductService {
         dto.setWorkflowId(product.getWorkflowId());
 
         return dto;
+    }
+
+    private ProductParameterResponseDto convertToProductParameterResponse(ProductParameter productParameter, String lang) {
+        return ProductParameterResponseDto.builder()
+                .parameterId(productParameter.getParameter().getId())
+                .parameterNameEn(productParameter.getParameter().getNameEn())
+                .parameterNameBg(productParameter.getParameter().getNameBg())
+                .options(productParameter.getParameter().getOptions().stream()
+                        .map(p -> parameterMapper.toOptionResponseDto(p, lang)).toList())
+                .build();
     }
 
     private CategorySummaryDTO convertToCategorySummary(Category category) {

@@ -2,6 +2,7 @@ package com.techstore.dto;
 
 import com.techstore.dto.response.CategorySummaryDTO;
 import com.techstore.dto.response.ManufacturerSummaryDto;
+import com.techstore.dto.response.ProductParameterResponseDto;
 import com.techstore.entity.ProductParameter;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -38,7 +39,7 @@ public class ProductResponseDTO {
     private BigDecimal weight;
     private CategorySummaryDTO category;
     private ManufacturerSummaryDto manufacturer;
-    private List<ProductParameter> specifications;
+    private List<ProductParameterResponseDto> specifications;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private Boolean onSale;

@@ -4,9 +4,12 @@ import com.techstore.dto.filter.AdvancedFilterRequestDTO;
 import com.techstore.dto.ProductResponseDTO;
 import com.techstore.dto.response.CategorySummaryDTO;
 import com.techstore.dto.response.ManufacturerSummaryDto;
+import com.techstore.dto.response.ProductParameterResponseDto;
 import com.techstore.entity.Category;
 import com.techstore.entity.Manufacturer;
 import com.techstore.entity.Product;
+import com.techstore.entity.ProductParameter;
+import com.techstore.mapper.ParameterMapper;
 import com.techstore.repository.ProductRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,11 +32,12 @@ import java.util.Set;
 public class AdvancedFilteringService {
 
     private final ProductRepository productRepository;
+    private final ParameterMapper parameterMapper;
 
     /**
      * Advanced product filtering with specification-based filters
      */
-    public Page<ProductResponseDTO> filterProductsAdvanced(AdvancedFilterRequestDTO filterRequest, Pageable pageable) {
+    public Page<ProductResponseDTO> filterProductsAdvanced(AdvancedFilterRequestDTO filterRequest, Pageable pageable, String lang) {
         // Build dynamic query based on filters
         List<Product> filteredProducts = buildFilteredProductQuery(filterRequest);
 
@@ -45,7 +49,7 @@ public class AdvancedFilteringService {
 
         Page<Product> productPage = new PageImpl<>(pageContent, pageable, filteredProducts.size());
 
-        return productPage.map(this::convertToResponseDTO);
+        return productPage.map(p -> convertToResponseDTO(p, lang));
     }
 
     private List<Product> buildFilteredProductQuery(AdvancedFilterRequestDTO filterRequest) {
@@ -90,7 +94,7 @@ public class AdvancedFilteringService {
         return new ArrayList<>(candidates);
     }
 
-    private ProductResponseDTO convertToResponseDTO(Product product) {
+    private ProductResponseDTO convertToResponseDTO(Product product, String lang) {
         ProductResponseDTO dto = new ProductResponseDTO();
 
         dto.setId(product.getId());
@@ -120,7 +124,7 @@ public class AdvancedFilteringService {
 
         dto.setWarranty(product.getWarranty());
         dto.setWeight(product.getWeight());
-        dto.setSpecifications(product.getProductParameters().stream().toList());
+        dto.setSpecifications(product.getProductParameters().stream().map(p -> convertToProductParameterResponse(p, lang)).toList());
 
         if (product.getCategory() != null) {
             dto.setCategory(convertToCategorySummary(product.getCategory()));
@@ -153,6 +157,16 @@ public class AdvancedFilteringService {
         return ManufacturerSummaryDto.builder()
                 .id(manufacturer.getId())
                 .name(manufacturer.getName())
+                .build();
+    }
+
+    private ProductParameterResponseDto convertToProductParameterResponse(ProductParameter productParameter, String lang) {
+        return ProductParameterResponseDto.builder()
+                .parameterId(productParameter.getParameter().getId())
+                .parameterNameEn(productParameter.getParameter().getNameEn())
+                .parameterNameBg(productParameter.getParameter().getNameBg())
+                .options(productParameter.getParameter().getOptions().stream()
+                        .map(p -> parameterMapper.toOptionResponseDto(p, lang)).toList())
                 .build();
     }
 }

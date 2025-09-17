@@ -1,11 +1,17 @@
 package com.techstore.controller;
 
-import com.techstore.dto.filter.AdvancedFilterRequestDTO;
 import com.techstore.dto.ProductResponseDTO;
-import com.techstore.dto.external.ProductRequestDto;
+import com.techstore.dto.filter.AdvancedFilterRequestDTO;
+import com.techstore.dto.request.ProductCreateRequestDTO;
+import com.techstore.dto.request.ProductImageOperationsDTO;
+import com.techstore.dto.request.ProductImageUpdateDTO;
+import com.techstore.dto.request.ProductUpdateRequestDTO;
+import com.techstore.dto.response.ProductImageUploadResponseDTO;
 import com.techstore.enums.ProductStatus;
 import com.techstore.service.AdvancedFilteringService;
 import com.techstore.service.ProductService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -14,8 +20,9 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -24,7 +31,9 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -33,28 +42,16 @@ import java.util.List;
 @RequestMapping("/api/products")
 @RequiredArgsConstructor
 @Slf4j
+@Tag(name = "Products", description = "Product management APIs")
 public class ProductController {
 
     private final ProductService productService;
     private final AdvancedFilteringService filteringService;
 
-    @PostMapping("/filter/advanced")
-    public ResponseEntity<Page<ProductResponseDTO>> filterProductsAdvanced(
-            @RequestBody AdvancedFilterRequestDTO filterRequest,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
-            @RequestParam(defaultValue = "name") String sortBy,
-            @RequestParam(defaultValue = "asc") String sortDir) {
-
-        Sort sort = sortDir.equalsIgnoreCase("desc") ?
-                Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
-        Pageable pageable = PageRequest.of(page, size, sort);
-
-        Page<ProductResponseDTO> products = filteringService.filterProductsAdvanced(filterRequest, pageable);
-        return ResponseEntity.ok(products);
-    }
+    // ===== PUBLIC READ ENDPOINTS =====
 
     @GetMapping
+    @Operation(summary = "Get all products", description = "Retrieve paginated list of active products")
     public ResponseEntity<Page<ProductResponseDTO>> getAllProducts(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
@@ -70,12 +67,14 @@ public class ProductController {
     }
 
     @GetMapping("/{id}")
+    @Operation(summary = "Get product by ID", description = "Retrieve detailed product information")
     public ResponseEntity<ProductResponseDTO> getProductById(@PathVariable Long id) {
         ProductResponseDTO product = productService.getProductById(id);
         return ResponseEntity.ok(product);
     }
 
     @GetMapping("/category/{categoryId}")
+    @Operation(summary = "Get products by category", description = "Retrieve products filtered by category")
     public ResponseEntity<Page<ProductResponseDTO>> getProductsByCategory(
             @PathVariable Long categoryId,
             @RequestParam(defaultValue = "0") int page,
@@ -92,6 +91,7 @@ public class ProductController {
     }
 
     @GetMapping("/brand/{brandId}")
+    @Operation(summary = "Get products by brand", description = "Retrieve products filtered by manufacturer/brand")
     public ResponseEntity<Page<ProductResponseDTO>> getProductsByBrand(
             @PathVariable Long brandId,
             @RequestParam(defaultValue = "0") int page,
@@ -108,6 +108,7 @@ public class ProductController {
     }
 
     @GetMapping("/featured")
+    @Operation(summary = "Get featured products", description = "Retrieve featured products")
     public ResponseEntity<Page<ProductResponseDTO>> getFeaturedProducts(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
@@ -118,6 +119,7 @@ public class ProductController {
     }
 
     @GetMapping("/on-sale")
+    @Operation(summary = "Get products on sale", description = "Retrieve products with discounts")
     public ResponseEntity<Page<ProductResponseDTO>> getProductsOnSale(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
@@ -128,6 +130,7 @@ public class ProductController {
     }
 
     @GetMapping("/search")
+    @Operation(summary = "Search products", description = "Search products by text query")
     public ResponseEntity<Page<ProductResponseDTO>> searchProducts(
             @RequestParam String q,
             @RequestParam(defaultValue = "0") int page,
@@ -144,6 +147,7 @@ public class ProductController {
     }
 
     @GetMapping("/filter")
+    @Operation(summary = "Filter products", description = "Filter products with multiple criteria")
     public ResponseEntity<Page<ProductResponseDTO>> filterProducts(
             @RequestParam(required = false) Long categoryId,
             @RequestParam(required = false) Long brandId,
@@ -161,14 +165,32 @@ public class ProductController {
                 Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
         Pageable pageable = PageRequest.of(page, size, sort);
 
-        ProductStatus productStatus = ProductStatus.valueOf(status);
+        ProductStatus productStatus = status != null ? ProductStatus.valueOf(status) : null;
 
         Page<ProductResponseDTO> products = productService.filterProducts(
                 categoryId, brandId, minPrice, maxPrice, productStatus, onSale, q, pageable);
         return ResponseEntity.ok(products);
     }
 
+    @PostMapping("/filter/advanced")
+    @Operation(summary = "Advanced product filtering", description = "Filter products with advanced specification-based filters")
+    public ResponseEntity<Page<ProductResponseDTO>> filterProductsAdvanced(
+            @RequestBody AdvancedFilterRequestDTO filterRequest,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "name") String sortBy,
+            @RequestParam(defaultValue = "asc") String sortDir) {
+
+        Sort sort = sortDir.equalsIgnoreCase("desc") ?
+                Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
+        Pageable pageable = PageRequest.of(page, size, sort);
+
+        Page<ProductResponseDTO> products = filteringService.filterProductsAdvanced(filterRequest, pageable);
+        return ResponseEntity.ok(products);
+    }
+
     @GetMapping("/{id}/related")
+    @Operation(summary = "Get related products", description = "Get products related to the specified product")
     public ResponseEntity<List<ProductResponseDTO>> getRelatedProducts(
             @PathVariable Long id,
             @RequestParam(defaultValue = "8") int limit) {
@@ -177,28 +199,68 @@ public class ProductController {
         return ResponseEntity.ok(relatedProducts);
     }
 
-    // ===== ADMIN ENDPOINTS =====
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
+    @Operation(summary = "Create product with images", description = "Create a new product with required images in single operation")
+    public ResponseEntity<ProductResponseDTO> createProductWithImages(
+            @RequestPart("product") @Valid ProductCreateRequestDTO productData,
+            @RequestPart("primaryImage") MultipartFile primaryImage,
+            @RequestPart(value = "additionalImages", required = false) List<MultipartFile> additionalImages) {
 
-    @PostMapping
-//    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
-    public ResponseEntity<ProductResponseDTO> createProduct(@Valid @RequestBody ProductRequestDto requestDTO) {
-        ProductResponseDTO createdProduct = productService.createProduct(requestDTO);
+        log.info("Creating product with reference number: {} and {} images",
+                productData.getReferenceNumber(),
+                1 + (additionalImages != null ? additionalImages.size() : 0));
+
+        ProductResponseDTO createdProduct = productService.createProductWithImages(
+                productData, primaryImage, additionalImages);
+
         return ResponseEntity.status(HttpStatus.CREATED).body(createdProduct);
     }
 
-    @PutMapping("/{id}")
-//    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
-    public ResponseEntity<ProductResponseDTO> updateProduct(
+    @PutMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
+    @Operation(summary = "Update product with image management", description = "Update product and manage images in single operation")
+    public ResponseEntity<ProductResponseDTO> updateProductWithImages(
             @PathVariable Long id,
-            @Valid @RequestBody ProductRequestDto requestDTO) {
+            @RequestPart("product") @Valid ProductUpdateRequestDTO productData,
+            @RequestPart(value = "newPrimaryImage", required = false) MultipartFile newPrimaryImage,
+            @RequestPart(value = "newAdditionalImages", required = false) List<MultipartFile> newAdditionalImages,
+            @RequestPart(value = "imageOperations", required = false) ProductImageOperationsDTO imageOperations) {
 
-        log.info("Updating product with id: {}", id);
-        ProductResponseDTO updatedProduct = productService.updateProduct(id, requestDTO);
+        log.info("Updating product with id: {} with image operations", id);
+
+        ProductResponseDTO updatedProduct = productService.updateProductWithImages(
+                id, productData, newPrimaryImage, newAdditionalImages, imageOperations);
+
         return ResponseEntity.ok(updatedProduct);
     }
 
-    @DeleteMapping("/{id}")
+//    @PostMapping
 //    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
+//    @Operation(summary = "Create product", description = "Create a new product (Admin only)")
+//    public ResponseEntity<ProductResponseDTO> createProduct(
+//            @Valid @RequestBody ProductCreateRequestDTO requestDTO) {
+//
+//        log.info("Creating product with reference number: {}", requestDTO.getReferenceNumber());
+//        ProductResponseDTO createdProduct = productService.createProductRest(requestDTO);
+//        return ResponseEntity.status(HttpStatus.CREATED).body(createdProduct);
+//    }
+//
+//    @PutMapping("/{id}")
+//    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
+//    @Operation(summary = "Update product", description = "Update an existing product (Admin only)")
+//    public ResponseEntity<ProductResponseDTO> updateProduct(
+//            @PathVariable Long id,
+//            @Valid @RequestBody ProductUpdateRequestDTO requestDTO) {
+//
+//        log.info("Updating product with id: {}", id);
+//        ProductResponseDTO updatedProduct = productService.updateProductRest(id, requestDTO);
+//        return ResponseEntity.ok(updatedProduct);
+//    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
+    @Operation(summary = "Delete product", description = "Soft delete a product (Admin only)")
     public ResponseEntity<Void> deleteProduct(@PathVariable Long id) {
         log.info("Deleting product with id: {}", id);
         productService.deleteProduct(id);
@@ -206,10 +268,50 @@ public class ProductController {
     }
 
     @DeleteMapping("/{id}/permanent")
-//    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @Operation(summary = "Permanently delete product", description = "Permanently delete a product (Super Admin only)")
     public ResponseEntity<Void> permanentDeleteProduct(@PathVariable Long id) {
         log.info("Permanently deleting product with id: {}", id);
         productService.permanentDeleteProduct(id);
         return ResponseEntity.noContent().build();
+    }
+
+    // ===== SIMPLIFIED IMAGE-ONLY OPERATIONS (for existing products) =====
+
+    @PostMapping(value = "/{id}/images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
+    @Operation(summary = "Add image to existing product", description = "Add single image to existing product")
+    public ResponseEntity<ProductImageUploadResponseDTO> addImageToProduct(
+            @PathVariable Long id,
+            @RequestPart("file") MultipartFile file,
+            @RequestParam(defaultValue = "false") boolean isPrimary) {
+
+        log.info("Adding image to existing product {} (isPrimary: {})", id, isPrimary);
+        ProductImageUploadResponseDTO response = productService.addImageToProduct(id, file, isPrimary);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @DeleteMapping("/{id}/images")
+    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
+    @Operation(summary = "Delete product image", description = "Delete specific image from product")
+    public ResponseEntity<Void> deleteProductImage(
+            @PathVariable Long id,
+            @RequestParam String imageUrl) {
+
+        log.info("Deleting image {} from product {}", imageUrl, id);
+        productService.deleteProductImage(id, imageUrl);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/{id}/images/reorder")
+    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
+    @Operation(summary = "Reorder product images", description = "Reorder existing product images")
+    public ResponseEntity<ProductResponseDTO> reorderProductImages(
+            @PathVariable Long id,
+            @RequestBody @Valid List<ProductImageUpdateDTO> images) {
+
+        log.info("Reordering images for product {}", id);
+        ProductResponseDTO updatedProduct = productService.reorderProductImages(id, images);
+        return ResponseEntity.ok(updatedProduct);
     }
 }

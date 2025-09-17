@@ -4,6 +4,7 @@ import com.techstore.dto.request.ProductSearchRequestDto;
 import com.techstore.dto.response.ProductSummaryDto;
 import com.techstore.entity.Product;
 import com.techstore.mapper.ProductMapper;
+import com.techstore.repository.ProductRepository;
 import com.techstore.repository.UserFavoriteRepository;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
@@ -16,7 +17,10 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -26,6 +30,24 @@ public class SearchService {
     private final EntityManager entityManager;
     private final ProductMapper productMapper;
     private final UserFavoriteRepository userFavoriteRepository;
+    private final ProductRepository productRepository;
+
+    public List<String> getSearchSuggestions(String query, Long categoryId, int limit) {
+        Set<String> suggestions = new HashSet<>();
+
+        // Get product name suggestions
+        Page<Product> productMatches = productRepository.searchProducts(query, PageRequest.of(0, limit / 2));
+        productMatches.getContent().forEach(product -> {
+            suggestions.add(product.getNameEn());
+            suggestions.add(product.getManufacturer().getName());
+        });
+
+        return suggestions.stream()
+                .filter(s -> s.toLowerCase().contains(query.toLowerCase()))
+                .sorted()
+                .limit(limit)
+                .collect(Collectors.toList());
+    }
 
     public Page<ProductSummaryDto> searchProducts(ProductSearchRequestDto searchRequest, Long userId, String language) {
         SearchSession searchSession = Search.session(entityManager);

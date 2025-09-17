@@ -1,6 +1,6 @@
 package com.techstore.controller;
 
-import com.techstore.service.EnhancedSearchService;
+import com.techstore.service.SearchService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -19,7 +19,7 @@ import java.util.List;
 @CrossOrigin(origins = "*", maxAge = 3600)
 public class SearchController {
 
-    private final EnhancedSearchService searchService;
+    private final SearchService searchService;
 
     @GetMapping("/suggestions")
     public ResponseEntity<List<String>> getSuggestions(

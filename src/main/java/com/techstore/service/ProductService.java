@@ -1,9 +1,6 @@
 package com.techstore.service;
 
 import com.techstore.dto.ProductResponseDTO;
-import com.techstore.dto.external.ImageDto;
-import com.techstore.dto.external.ProductRequestDto;
-import com.techstore.dto.request.ParameterValueRequestDto;
 import com.techstore.dto.request.ProductCreateRequestDTO;
 import com.techstore.dto.request.ProductImageOperationsDTO;
 import com.techstore.dto.request.ProductImageUpdateDTO;
@@ -22,19 +19,23 @@ import com.techstore.entity.ProductParameter;
 import com.techstore.enums.ProductStatus;
 import com.techstore.exception.BusinessLogicException;
 import com.techstore.exception.DuplicateResourceException;
-import com.techstore.exception.ResourceNotFoundException;
+import com.techstore.exception.ValidationException;
 import com.techstore.mapper.ParameterMapper;
 import com.techstore.repository.CategoryRepository;
 import com.techstore.repository.ManufacturerRepository;
 import com.techstore.repository.ParameterOptionRepository;
 import com.techstore.repository.ParameterRepository;
 import com.techstore.repository.ProductRepository;
+import com.techstore.util.ExceptionHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
@@ -60,62 +61,220 @@ public class ProductService {
     private final S3Service s3Service;
     private final ParameterMapper parameterMapper;
 
-    @Transactional
+    // Constants for validation
+    private static final int MAX_IMAGES_PER_PRODUCT = 20;
+    private static final int MAX_PARAMETERS_PER_PRODUCT = 100;
+    private static final long MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
+    // ============ CREATE OPERATIONS ============
+
+    @CacheEvict(value = "products", allEntries = true)
     public ProductResponseDTO createProductWithImages(
             ProductCreateRequestDTO productData,
             MultipartFile primaryImage,
             List<MultipartFile> additionalImages, String lang) {
 
-        if (primaryImage == null || primaryImage.isEmpty()) {
-            throw new BusinessLogicException("Primary image is required for product creation");
-        }
+        log.info("Creating product with reference: {} and {} images",
+                productData.getReferenceNumber(),
+                1 + (additionalImages != null ? additionalImages.size() : 0));
 
-        if (productRepository.existsByReferenceNumberIgnoreCase(productData.getReferenceNumber())) {
-            throw new DuplicateResourceException("Product already exists with reference number: " + productData.getReferenceNumber());
-        }
+        String context = ExceptionHelper.createErrorContext(
+                "createProductWithImages", "Product", null,
+                "reference: " + productData.getReferenceNumber());
 
-        List<String> uploadedImageUrls = new ArrayList<>();
+        return ExceptionHelper.wrapDatabaseOperation(() -> {
+            // Comprehensive validation
+            validateProductCreateRequest(productData, true);
+            validatePrimaryImage(primaryImage);
+            validateAdditionalImages(additionalImages);
 
-        try {
-            log.debug("Uploading primary image for product: {}", productData.getReferenceNumber());
-            String primaryImageUrl = s3Service.uploadProductImage(primaryImage, "products");
-            uploadedImageUrls.add(primaryImageUrl);
+            // Check for duplicates
+            checkForDuplicateProduct(productData.getReferenceNumber(), null);
 
-            List<String> additionalImageUrls = new ArrayList<>();
-            if (additionalImages != null && !additionalImages.isEmpty()) {
-                log.debug("Uploading {} additional images", additionalImages.size());
-                for (MultipartFile additionalImage : additionalImages) {
-                    if (!additionalImage.isEmpty()) {
-                        String additionalImageUrl = s3Service.uploadProductImage(additionalImage, "products");
-                        additionalImageUrls.add(additionalImageUrl);
-                        uploadedImageUrls.add(additionalImageUrl);
-                    }
+            List<String> uploadedImageUrls = new ArrayList<>();
+
+            try {
+                // Upload primary image
+                log.debug("Uploading primary image for product: {}", productData.getReferenceNumber());
+                String primaryImageUrl = uploadImageSafely(primaryImage, "products");
+                uploadedImageUrls.add(primaryImageUrl);
+
+                // Upload additional images
+                List<String> additionalImageUrls = uploadAdditionalImages(additionalImages, uploadedImageUrls);
+
+                // Create product
+                Product product = createProductFromCreateRequest(productData);
+                product.setPrimaryImageUrl(primaryImageUrl);
+                if (!additionalImageUrls.isEmpty()) {
+                    product.setAdditionalImages(additionalImageUrls);
                 }
+
+                product = productRepository.save(product);
+
+                log.info("Product created successfully with id: {} and {} images",
+                        product.getId(), uploadedImageUrls.size());
+
+                return convertToResponseDTO(product, lang);
+
+            } catch (Exception e) {
+                log.error("Product creation failed, cleaning up uploaded images", e);
+                cleanupImagesOnError(uploadedImageUrls);
+                throw e;
             }
-
-            Product product = new Product();
-            updateProductFieldsFromRest(product, productData);
-
-            product.setPrimaryImageUrl(primaryImageUrl);
-            if (!additionalImageUrls.isEmpty()) {
-                product.setAdditionalImages(additionalImageUrls);
-            }
-
-            product = productRepository.save(product);
-
-            log.info("Product created successfully with id: {} and {} images",
-                    product.getId(), uploadedImageUrls.size());
-
-            return convertToResponseDTO(product, lang);
-
-        } catch (Exception e) {
-            log.error("Product creation failed, cleaning up uploaded images", e);
-            s3Service.deleteImages(uploadedImageUrls);
-            throw e;
-        }
+        }, context);
     }
 
-    @Transactional
+    @CacheEvict(value = "products", allEntries = true)
+    public ProductImageUploadResponseDTO addImageToProduct(Long productId, MultipartFile file, boolean isPrimary) {
+        log.info("Adding image to product {} (isPrimary: {})", productId, isPrimary);
+
+        String context = ExceptionHelper.createErrorContext(
+                "addImageToProduct", "Product", productId, "isPrimary: " + isPrimary);
+
+        return ExceptionHelper.wrapDatabaseOperation(() -> {
+            // Validate inputs
+            validateProductId(productId);
+            validateImageFile(file);
+
+            // Find product
+            Product product = findProductByIdOrThrow(productId);
+
+            // Validate business rules
+            validateImageLimits(product);
+
+            // Upload image
+            String imageUrl = uploadImageSafely(file, "products");
+
+            try {
+                updateProductImagesForAdd(product, imageUrl, isPrimary);
+                productRepository.save(product);
+
+                return createImageUploadResponse(file, imageUrl, isPrimary, product);
+
+            } catch (Exception e) {
+                cleanupImageOnError(imageUrl);
+                throw e;
+            }
+        }, context);
+    }
+
+    // ============ READ OPERATIONS ============
+
+    @Transactional(readOnly = true)
+    @Cacheable(value = "products", key = "'all_' + #pageable.pageNumber + '_' + #pageable.pageSize + '_' + #lang")
+    public Page<ProductResponseDTO> getAllProducts(Pageable pageable, String lang) {
+        log.debug("Fetching all products - Page: {}, Size: {}", pageable.getPageNumber(), pageable.getPageSize());
+
+        validatePaginationParameters(pageable);
+        validateLanguage(lang);
+
+        return ExceptionHelper.wrapDatabaseOperation(() ->
+                        productRepository.findByActiveTrue(pageable)
+                                .map(p -> convertToResponseDTO(p, lang)),
+                "fetch all products"
+        );
+    }
+
+    @Transactional(readOnly = true)
+    @Cacheable(value = "products", key = "#id + '_' + #lang")
+    public ProductResponseDTO getProductById(Long id, String lang) {
+        log.debug("Fetching product with id: {}", id);
+
+        validateProductId(id);
+        validateLanguage(lang);
+
+        Product product = findProductByIdOrThrow(id);
+        return convertToResponseDTO(product, lang);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<ProductResponseDTO> getProductsByCategory(Long categoryId, Pageable pageable, String lang) {
+        log.debug("Fetching products by category: {}", categoryId);
+
+        String context = ExceptionHelper.createErrorContext(
+                "getProductsByCategory", "Product", null, "categoryId: " + categoryId);
+
+        return ExceptionHelper.wrapDatabaseOperation(() -> {
+            validateCategoryId(categoryId);
+            validatePaginationParameters(pageable);
+            validateLanguage(lang);
+
+            // Verify category exists
+            findCategoryByIdOrThrow(categoryId);
+
+            return productRepository.findByActiveTrueAndCategoryId(categoryId, pageable)
+                    .map(p -> convertToResponseDTO(p, lang));
+        }, context);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<ProductResponseDTO> getProductsByBrand(Long brandId, Pageable pageable, String lang) {
+        log.debug("Fetching products by brand: {}", brandId);
+
+        String context = ExceptionHelper.createErrorContext(
+                "getProductsByBrand", "Product", null, "brandId: " + brandId);
+
+        return ExceptionHelper.wrapDatabaseOperation(() -> {
+            validateManufacturerId(brandId);
+            validatePaginationParameters(pageable);
+            validateLanguage(lang);
+
+            // Verify manufacturer exists
+            findManufacturerByIdOrThrow(brandId);
+
+            return productRepository.findByActiveTrueAndManufacturerId(brandId, pageable)
+                    .map(p -> convertToResponseDTO(p, lang));
+        }, context);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProductResponseDTO> getRelatedProducts(Long productId, int limit, String lang) {
+        log.debug("Fetching related products for product: {}", productId);
+
+        String context = ExceptionHelper.createErrorContext(
+                "getRelatedProducts", "Product", productId, "limit: " + limit);
+
+        return ExceptionHelper.wrapDatabaseOperation(() -> {
+            validateProductId(productId);
+            validateRelatedProductsLimit(limit);
+            validateLanguage(lang);
+
+            Product product = findProductByIdOrThrow(productId);
+
+            validateProductForRelated(product);
+
+            Pageable pageable = Pageable.ofSize(limit);
+            return productRepository.findRelatedProducts(
+                            productId,
+                            product.getCategory().getId(),
+                            product.getManufacturer().getId(),
+                            pageable
+                    ).stream()
+                    .map(p -> convertToResponseDTO(p, lang))
+                    .toList();
+        }, context);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<ProductResponseDTO> searchProducts(String query, Pageable pageable, String lang) {
+        log.debug("Searching products with query: {}", query);
+
+        String context = ExceptionHelper.createErrorContext(
+                "searchProducts", "Product", null, "query: " + query);
+
+        return ExceptionHelper.wrapDatabaseOperation(() -> {
+            validateSearchQuery(query);
+            validatePaginationParameters(pageable);
+            validateLanguage(lang);
+
+            return productRepository.searchProducts(query, pageable)
+                    .map(p -> convertToResponseDTO(p, lang));
+        }, context);
+    }
+
+    // ============ UPDATE OPERATIONS ============
+
+    @CacheEvict(value = "products", allEntries = true)
     public ProductResponseDTO updateProductWithImages(
             Long id,
             ProductUpdateRequestDTO productData,
@@ -123,129 +282,707 @@ public class ProductService {
             List<MultipartFile> newAdditionalImages,
             ProductImageOperationsDTO imageOperations, String lang) {
 
-        Product product = productRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + id));
+        log.info("Updating product with id: {} with image operations", id);
 
-        if (!product.getReferenceNumber().equalsIgnoreCase(productData.getReferenceNumber()) &&
-                productRepository.existsByReferenceNumberIgnoreCase(productData.getReferenceNumber())) {
-            throw new DuplicateResourceException("Product already exists with reference number: " + productData.getReferenceNumber());
-        }
+        String context = ExceptionHelper.createErrorContext("updateProductWithImages", "Product", id, null);
 
-        List<String> newUploadedImages = new ArrayList<>();
-        List<String> imagesToCleanup = new ArrayList<>();
+        return ExceptionHelper.wrapDatabaseOperation(() -> {
+            // Validate inputs
+            validateProductId(id);
+            validateProductUpdateRequest(productData);
+            if (newPrimaryImage != null) validateImageFile(newPrimaryImage);
+            validateAdditionalImages(newAdditionalImages);
+            validateLanguage(lang);
 
-        try {
-            if (imageOperations != null && imageOperations.getImagesToDelete() != null) {
-                for (String imageUrl : imageOperations.getImagesToDelete()) {
-                    if (imageUrl.equals(product.getPrimaryImageUrl())) {
-                        product.setPrimaryImageUrl(null);
-                    }
-                    if (product.getAdditionalImages() != null) {
-                        product.getAdditionalImages().remove(imageUrl);
-                    }
-                    imagesToCleanup.add(imageUrl);
+            // Find product
+            Product product = findProductByIdOrThrow(id);
+
+            // Check for reference number conflicts
+            checkForDuplicateProduct(productData.getReferenceNumber(), id);
+
+            List<String> newUploadedImages = new ArrayList<>();
+            List<String> imagesToCleanup = new ArrayList<>();
+
+            try {
+                // Handle image operations
+                processImageOperations(product, imageOperations, newPrimaryImage,
+                        newAdditionalImages, newUploadedImages, imagesToCleanup);
+
+                // Ensure product has at least one image
+                validateProductHasImages(product);
+
+                // Update product fields
+                updateProductFieldsFromRest(product, productData);
+
+                product = productRepository.save(product);
+
+                // Cleanup old images
+                if (!imagesToCleanup.isEmpty()) {
+                    cleanupImagesOnError(imagesToCleanup);
                 }
+
+                log.info("Product updated successfully with id: {}", product.getId());
+                return convertToResponseDTO(product, lang);
+
+            } catch (Exception e) {
+                log.error("Product update failed, cleaning up new uploads", e);
+                cleanupImagesOnError(newUploadedImages);
+                throw e;
             }
-
-            if (newPrimaryImage != null && !newPrimaryImage.isEmpty()) {
-                if (product.getPrimaryImageUrl() != null) {
-                    imagesToCleanup.add(product.getPrimaryImageUrl());
-                }
-                String newPrimaryUrl = s3Service.uploadProductImage(newPrimaryImage, "products");
-                product.setPrimaryImageUrl(newPrimaryUrl);
-                newUploadedImages.add(newPrimaryUrl);
-            }
-
-            if (newAdditionalImages != null && !newAdditionalImages.isEmpty()) {
-                if (product.getAdditionalImages() == null) {
-                    product.setAdditionalImages(new ArrayList<>());
-                }
-
-                for (MultipartFile additionalImage : newAdditionalImages) {
-                    if (!additionalImage.isEmpty()) {
-                        String additionalUrl = s3Service.uploadProductImage(additionalImage, "products");
-                        product.getAdditionalImages().add(additionalUrl);
-                        newUploadedImages.add(additionalUrl);
-                    }
-                }
-            }
-
-            if (imageOperations != null && imageOperations.getReorderImages() != null) {
-                handleImageReordering(product, imageOperations.getReorderImages());
-            }
-
-            if (product.getPrimaryImageUrl() == null) {
-                if (product.getAdditionalImages() != null && !product.getAdditionalImages().isEmpty()) {
-                    product.setPrimaryImageUrl(product.getAdditionalImages().remove(0));
-                } else {
-                    s3Service.deleteImages(newUploadedImages);
-                    throw new BusinessLogicException("Product must have at least one image");
-                }
-            }
-
-            updateProductFieldsFromRest(product, productData);
-
-            product = productRepository.save(product);
-
-            if (!imagesToCleanup.isEmpty()) {
-                s3Service.deleteImages(imagesToCleanup);
-            }
-
-            log.info("Product updated successfully with id: {}", product.getId());
-            return convertToResponseDTO(product, lang);
-
-        } catch (Exception e) {
-            log.error("Product update failed, cleaning up new uploads", e);
-            s3Service.deleteImages(newUploadedImages);
-            throw e;
-        }
+        }, context);
     }
 
-    @Transactional
-    public ProductImageUploadResponseDTO addImageToProduct(Long productId, MultipartFile file, boolean isPrimary) {
-        Product product = productRepository.findById(productId)
-                .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
+    @CacheEvict(value = "products", allEntries = true)
+    public ProductResponseDTO reorderProductImages(Long productId, List<ProductImageUpdateDTO> images, String lang) {
+        log.info("Reordering images for product {}", productId);
 
-        String imageUrl = s3Service.uploadProductImage(file, "products");
+        String context = ExceptionHelper.createErrorContext("reorderProductImages", "Product", productId, null);
 
-        try {
-            if (isPrimary) {
-                if (product.getPrimaryImageUrl() != null) {
-                    if (product.getAdditionalImages() == null) {
-                        product.setAdditionalImages(new ArrayList<>());
-                    }
-                    product.getAdditionalImages().add(0, product.getPrimaryImageUrl());
-                }
-                product.setPrimaryImageUrl(imageUrl);
-            } else {
-                if (product.getAdditionalImages() == null) {
-                    product.setAdditionalImages(new ArrayList<>());
-                }
-                product.getAdditionalImages().add(imageUrl);
+        return ExceptionHelper.wrapDatabaseOperation(() -> {
+            validateProductId(productId);
+            validateImageReorderRequest(images);
+            validateLanguage(lang);
+
+            Product product = findProductByIdOrThrow(productId);
+
+            handleImageReordering(product, images);
+            product = productRepository.save(product);
+
+            return convertToResponseDTO(product, lang);
+        }, context);
+    }
+
+    // ============ DELETE OPERATIONS ============
+
+    @CacheEvict(value = "products", allEntries = true)
+    public void deleteProduct(Long id) {
+        log.info("Deleting product with id: {}", id);
+
+        String context = ExceptionHelper.createErrorContext("deleteProduct", "Product", id, null);
+
+        ExceptionHelper.wrapDatabaseOperation(() -> {
+            validateProductId(id);
+
+            Product product = findProductByIdOrThrow(id);
+
+            // Business validation for deletion
+            validateProductDeletion(product);
+
+            // Collect images for cleanup
+            List<String> allImages = collectAllProductImages(product);
+
+            // Soft delete
+            product.setActive(false);
+            productRepository.save(product);
+
+            // Cleanup images
+            cleanupImagesOnError(allImages);
+
+            log.info("Product soft deleted successfully with id: {}", id);
+            return null;
+        }, context);
+    }
+
+    @CacheEvict(value = "products", allEntries = true)
+    public void permanentDeleteProduct(Long id) {
+        log.warn("Permanently deleting product with id: {}", id);
+
+        String context = ExceptionHelper.createErrorContext("permanentDeleteProduct", "Product", id, null);
+
+        ExceptionHelper.wrapDatabaseOperation(() -> {
+            validateProductId(id);
+
+            Product product = findProductByIdOrThrow(id);
+
+            // Strict validation for permanent deletion
+            validatePermanentProductDeletion(product);
+
+            // Collect images for cleanup
+            List<String> allImages = collectAllProductImages(product);
+
+            productRepository.deleteById(id);
+
+            // Cleanup images
+            cleanupImagesOnError(allImages);
+
+            log.warn("Product permanently deleted successfully with id: {}", id);
+            return null;
+        }, context);
+    }
+
+    @CacheEvict(value = "products", allEntries = true)
+    public void deleteProductImage(Long productId, String imageUrl) {
+        log.info("Deleting image {} from product {}", imageUrl, productId);
+
+        String context = ExceptionHelper.createErrorContext(
+                "deleteProductImage", "Product", productId, "imageUrl: " + imageUrl);
+
+        ExceptionHelper.wrapDatabaseOperation(() -> {
+            validateProductId(productId);
+            validateImageUrl(imageUrl);
+
+            Product product = findProductByIdOrThrow(productId);
+
+            boolean wasDeleted = removeImageFromProduct(product, imageUrl);
+
+            if (!wasDeleted) {
+                throw new ValidationException("Image not found for this product");
             }
+
+            // Ensure product has at least one image
+            ensureProductHasPrimaryImage(product);
 
             productRepository.save(product);
 
-            return ProductImageUploadResponseDTO.builder()
-                    .imageUrl(imageUrl)
-                    .fileName(file.getOriginalFilename())
-                    .fileSize(file.getSize())
-                    .contentType(file.getContentType())
-                    .isPrimary(isPrimary)
-                    .order(isPrimary ? 0 : product.getAdditionalImages().size())
-                    .build();
+            // Cleanup the deleted image
+            cleanupImageOnError(imageUrl);
 
-        } catch (Exception e) {
-            s3Service.deleteImage(imageUrl);
-            throw e;
+            log.info("Deleted image {} from product {}", imageUrl, productId);
+            return null;
+        }, context);
+    }
+
+    // ============ UTILITY METHODS ============
+
+    @Transactional(readOnly = true)
+    public String getOriginalImageUrl(Long productId, boolean isPrimary, int index) {
+        log.debug("Getting original image URL for product: {} (isPrimary: {}, index: {})",
+                productId, isPrimary, index);
+
+        String context = ExceptionHelper.createErrorContext(
+                "getOriginalImageUrl", "Product", productId,
+                String.format("isPrimary: %s, index: %d", isPrimary, index));
+
+        return ExceptionHelper.wrapDatabaseOperation(() -> {
+            validateProductId(productId);
+            validateImageIndex(index);
+
+            Product product = findProductByIdOrThrow(productId);
+
+            if (isPrimary) {
+                return product.getPrimaryImageUrl();
+            } else {
+                if (product.getAdditionalImages() != null &&
+                        index >= 0 && index < product.getAdditionalImages().size()) {
+                    return product.getAdditionalImages().get(index);
+                }
+            }
+
+            return null;
+        }, context);
+    }
+
+    // ============ VALIDATION METHODS ============
+
+    private void validateProductId(Long id) {
+        if (id == null || id <= 0) {
+            throw new ValidationException("Product ID must be a positive number");
         }
     }
 
-    @Transactional
-    public void deleteProductImage(Long productId, String imageUrl) {
-        Product product = productRepository.findById(productId)
-                .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
+    private void validateCategoryId(Long categoryId) {
+        if (categoryId == null || categoryId <= 0) {
+            throw new ValidationException("Category ID must be a positive number");
+        }
+    }
 
+    private void validateManufacturerId(Long manufacturerId) {
+        if (manufacturerId == null || manufacturerId <= 0) {
+            throw new ValidationException("Manufacturer ID must be a positive number");
+        }
+    }
+
+    private void validateLanguage(String language) {
+        if (!StringUtils.hasText(language)) {
+            throw new ValidationException("Language is required");
+        }
+
+        if (!language.matches("^(en|bg)$")) {
+            throw new ValidationException("Language must be 'en' or 'bg'");
+        }
+    }
+
+    private void validatePaginationParameters(Pageable pageable) {
+        if (pageable.getPageNumber() < 0) {
+            throw new ValidationException("Page number cannot be negative");
+        }
+
+        if (pageable.getPageSize() <= 0) {
+            throw new ValidationException("Page size must be positive");
+        }
+
+        if (pageable.getPageSize() > 100) {
+            throw new ValidationException("Page size cannot exceed 100");
+        }
+    }
+
+    private void validateProductCreateRequest(ProductCreateRequestDTO requestDTO, boolean isCreate) {
+        if (requestDTO == null) {
+            throw new ValidationException("Product request cannot be null");
+        }
+
+        // Validate required fields
+        validateReferenceNumber(requestDTO.getReferenceNumber(), isCreate);
+        validateProductName(requestDTO.getNameEn(), "EN");
+        validateCategoryId(requestDTO.getCategoryId());
+        validateManufacturerId(requestDTO.getManufacturerId());
+        validateProductStatus(requestDTO.getStatus());
+
+        // Validate optional fields
+        validateOptionalProductFields(requestDTO);
+
+        // Validate parameters
+        validateProductParameters(requestDTO.getParameters());
+    }
+
+    private void validateProductUpdateRequest(ProductUpdateRequestDTO requestDTO) {
+        validateProductCreateRequest(requestDTO, false);
+
+        // Additional validation for update-specific fields
+        if (requestDTO.getImages() != null) {
+            validateImageUpdateList(requestDTO.getImages());
+        }
+
+        if (requestDTO.getImagesToDelete() != null) {
+            validateImagesToDelete(requestDTO.getImagesToDelete());
+        }
+    }
+
+    private void validateReferenceNumber(String referenceNumber, boolean isRequired) {
+        if (isRequired && !StringUtils.hasText(referenceNumber)) {
+            throw new ValidationException("Reference number is required");
+        }
+
+        if (StringUtils.hasText(referenceNumber)) {
+            if (referenceNumber.trim().length() > 100) {
+                throw new ValidationException("Reference number cannot exceed 100 characters");
+            }
+
+            if (referenceNumber.trim().length() < 3) {
+                throw new ValidationException("Reference number must be at least 3 characters long");
+            }
+        }
+    }
+
+    private void validateProductName(String name, String language) {
+        if (!StringUtils.hasText(name)) {
+            throw new ValidationException(String.format("Product name (%s) is required", language));
+        }
+
+        if (name.trim().length() > 500) {
+            throw new ValidationException(
+                    String.format("Product name (%s) cannot exceed 500 characters", language));
+        }
+
+        if (name.trim().length() < 2) {
+            throw new ValidationException(
+                    String.format("Product name (%s) must be at least 2 characters long", language));
+        }
+    }
+
+    private void validateProductStatus(Integer status) {
+        if (status == null) {
+            throw new ValidationException("Product status is required");
+        }
+
+        if (status < 0 || status > 4) {
+            throw new ValidationException("Product status must be between 0 and 4");
+        }
+    }
+
+    private void validateOptionalProductFields(ProductCreateRequestDTO requestDTO) {
+        if (StringUtils.hasText(requestDTO.getNameBg()) && requestDTO.getNameBg().length() > 500) {
+            throw new ValidationException("Product name (BG) cannot exceed 500 characters");
+        }
+
+        if (StringUtils.hasText(requestDTO.getDescriptionEn()) && requestDTO.getDescriptionEn().length() > 2000) {
+            throw new ValidationException("Product description (EN) cannot exceed 2000 characters");
+        }
+
+        if (StringUtils.hasText(requestDTO.getDescriptionBg()) && requestDTO.getDescriptionBg().length() > 2000) {
+            throw new ValidationException("Product description (BG) cannot exceed 2000 characters");
+        }
+
+        if (StringUtils.hasText(requestDTO.getModel()) && requestDTO.getModel().length() > 100) {
+            throw new ValidationException("Product model cannot exceed 100 characters");
+        }
+
+        if (StringUtils.hasText(requestDTO.getBarcode()) && requestDTO.getBarcode().length() > 50) {
+            throw new ValidationException("Product barcode cannot exceed 50 characters");
+        }
+
+        // Validate numeric fields
+        validateProductPrices(requestDTO);
+        validateProductMeasurements(requestDTO);
+    }
+
+    private void validateProductPrices(ProductCreateRequestDTO requestDTO) {
+        if (requestDTO.getPriceClient() != null && requestDTO.getPriceClient().compareTo(BigDecimal.ZERO) < 0) {
+            throw new ValidationException("Client price cannot be negative");
+        }
+
+        if (requestDTO.getPricePartner() != null && requestDTO.getPricePartner().compareTo(BigDecimal.ZERO) < 0) {
+            throw new ValidationException("Partner price cannot be negative");
+        }
+
+        if (requestDTO.getMarkupPercentage() != null) {
+            if (requestDTO.getMarkupPercentage().compareTo(BigDecimal.valueOf(-50.0)) < 0) {
+                throw new ValidationException("Markup percentage cannot be less than -50%");
+            }
+            if (requestDTO.getMarkupPercentage().compareTo(BigDecimal.valueOf(200.0)) > 0) {
+                throw new ValidationException("Markup percentage cannot exceed 200%");
+            }
+        }
+    }
+
+    private void validateProductMeasurements(ProductCreateRequestDTO requestDTO) {
+        if (requestDTO.getWeight() != null && requestDTO.getWeight().compareTo(BigDecimal.ZERO) < 0) {
+            throw new ValidationException("Product weight cannot be negative");
+        }
+
+        if (requestDTO.getWarranty() != null && requestDTO.getWarranty() < 0) {
+            throw new ValidationException("Product warranty cannot be negative");
+        }
+    }
+
+    private void validateProductParameters(List<ProductParameterCreateDTO> parameters) {
+        if (parameters == null) {
+            return;
+        }
+
+        if (parameters.size() > MAX_PARAMETERS_PER_PRODUCT) {
+            throw new ValidationException(
+                    String.format("Product cannot have more than %d parameters", MAX_PARAMETERS_PER_PRODUCT));
+        }
+
+        Set<Long> parameterIds = new HashSet<>();
+        Set<String> duplicateCheck = new HashSet<>();
+
+        for (ProductParameterCreateDTO param : parameters) {
+            if (param.getParameterId() == null) {
+                throw new ValidationException("Parameter ID is required");
+            }
+
+            if (param.getParameterOptionId() == null) {
+                throw new ValidationException("Parameter option ID is required");
+            }
+
+            parameterIds.add(param.getParameterId());
+
+            String key = param.getParameterId() + ":" + param.getParameterOptionId();
+            if (duplicateCheck.contains(key)) {
+                throw new ValidationException("Duplicate parameter-option combination found");
+            }
+            duplicateCheck.add(key);
+        }
+    }
+
+    private void validatePrimaryImage(MultipartFile primaryImage) {
+        if (primaryImage == null || primaryImage.isEmpty()) {
+            throw new ValidationException("Primary image is required for product creation");
+        }
+
+        validateImageFile(primaryImage);
+    }
+
+    private void validateAdditionalImages(List<MultipartFile> additionalImages) {
+        if (additionalImages == null || additionalImages.isEmpty()) {
+            return;
+        }
+
+        if (additionalImages.size() > MAX_IMAGES_PER_PRODUCT - 1) {
+            throw new ValidationException(
+                    String.format("Cannot have more than %d additional images", MAX_IMAGES_PER_PRODUCT - 1));
+        }
+
+        for (MultipartFile image : additionalImages) {
+            if (image != null && !image.isEmpty()) {
+                validateImageFile(image);
+            }
+        }
+    }
+
+    private void validateImageFile(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new ValidationException("Image file cannot be empty");
+        }
+
+        if (file.getSize() > MAX_FILE_SIZE) {
+            throw new ValidationException(
+                    String.format("Image file size cannot exceed %d bytes", MAX_FILE_SIZE));
+        }
+
+        String contentType = file.getContentType();
+        if (contentType == null || !contentType.startsWith("image/")) {
+            throw new ValidationException("File must be an image");
+        }
+
+        // Validate allowed image types
+        List<String> allowedTypes = List.of("image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp");
+        if (!allowedTypes.contains(contentType.toLowerCase())) {
+            throw new ValidationException("Image type not allowed. Allowed types: " + allowedTypes);
+        }
+    }
+
+    private void validateImageLimits(Product product) {
+        int currentImageCount = 1; // Primary image
+        if (product.getAdditionalImages() != null) {
+            currentImageCount += product.getAdditionalImages().size();
+        }
+
+        if (currentImageCount >= MAX_IMAGES_PER_PRODUCT) {
+            throw new BusinessLogicException(
+                    String.format("Product already has maximum of %d images", MAX_IMAGES_PER_PRODUCT));
+        }
+    }
+
+    private void validateSearchQuery(String query) {
+        if (!StringUtils.hasText(query)) {
+            throw new ValidationException("Search query cannot be empty");
+        }
+
+        if (query.trim().length() > 200) {
+            throw new ValidationException("Search query cannot exceed 200 characters");
+        }
+
+        if (query.trim().length() < 2) {
+            throw new ValidationException("Search query must be at least 2 characters long");
+        }
+    }
+
+    private void validateRelatedProductsLimit(int limit) {
+        if (limit <= 0) {
+            throw new ValidationException("Related products limit must be positive");
+        }
+
+        if (limit > 50) {
+            throw new ValidationException("Related products limit cannot exceed 50");
+        }
+    }
+
+    private void validateImageUrl(String imageUrl) {
+        if (!StringUtils.hasText(imageUrl)) {
+            throw new ValidationException("Image URL cannot be empty");
+        }
+    }
+
+    private void validateImageIndex(int index) {
+        if (index < 0) {
+            throw new ValidationException("Image index cannot be negative");
+        }
+    }
+
+    private void validateProductForRelated(Product product) {
+        if (product.getCategory() == null) {
+            throw new BusinessLogicException("Product must have a category to find related products");
+        }
+
+        if (product.getManufacturer() == null) {
+            throw new BusinessLogicException("Product must have a manufacturer to find related products");
+        }
+    }
+
+    private void validateProductDeletion(Product product) {
+        // Check if product has dependencies that prevent deletion
+        if (product.getFavorites() != null && !product.getFavorites().isEmpty()) {
+            log.info("Product {} has {} favorites that will be removed",
+                    product.getId(), product.getFavorites().size());
+        }
+
+        if (product.getCartItems() != null && !product.getCartItems().isEmpty()) {
+            log.info("Product {} has {} cart items that will be removed",
+                    product.getId(), product.getCartItems().size());
+        }
+    }
+
+    private void validatePermanentProductDeletion(Product product) {
+        validateProductDeletion(product);
+
+        if (product.getActive()) {
+            throw new BusinessLogicException("Product must be deactivated before permanent deletion");
+        }
+    }
+
+    private void validateImageReorderRequest(List<ProductImageUpdateDTO> images) {
+        if (images == null || images.isEmpty()) {
+            throw new ValidationException("Image reorder list cannot be empty");
+        }
+
+        if (images.size() > MAX_IMAGES_PER_PRODUCT) {
+            throw new ValidationException(
+                    String.format("Cannot reorder more than %d images", MAX_IMAGES_PER_PRODUCT));
+        }
+
+        long primaryCount = images.stream().mapToLong(img -> Boolean.TRUE.equals(img.getIsPrimary()) ? 1 : 0).sum();
+
+        if (primaryCount != 1) {
+            throw new ValidationException("Exactly one image must be marked as primary");
+        }
+
+        // Check for duplicate URLs
+        Set<String> urls = new HashSet<>();
+        for (ProductImageUpdateDTO img : images) {
+            if (!StringUtils.hasText(img.getImageUrl())) {
+                throw new ValidationException("Image URL cannot be empty");
+            }
+
+            if (urls.contains(img.getImageUrl())) {
+                throw new ValidationException("Duplicate image URL in reorder list: " + img.getImageUrl());
+            }
+            urls.add(img.getImageUrl());
+        }
+    }
+
+    private void validateImageUpdateList(List<ProductImageUpdateDTO> images) {
+        if (images.isEmpty()) {
+            return;
+        }
+
+        for (ProductImageUpdateDTO image : images) {
+            if (!StringUtils.hasText(image.getImageUrl())) {
+                throw new ValidationException("Image URL cannot be empty in update list");
+            }
+        }
+    }
+
+    private void validateImagesToDelete(List<String> imagesToDelete) {
+        for (String imageUrl : imagesToDelete) {
+            if (!StringUtils.hasText(imageUrl)) {
+                throw new ValidationException("Image URL to delete cannot be empty");
+            }
+        }
+    }
+
+    private void validateProductHasImages(Product product) {
+        if (product.getPrimaryImageUrl() == null) {
+            if (product.getAdditionalImages() == null || product.getAdditionalImages().isEmpty()) {
+                throw new BusinessLogicException("Product must have at least one image");
+            }
+        }
+    }
+
+    // ============ HELPER METHODS ============
+
+    private Product findProductByIdOrThrow(Long id) {
+        return ExceptionHelper.findOrThrow(
+                productRepository.findById(id).orElse(null),
+                "Product",
+                id
+        );
+    }
+
+    private Category findCategoryByIdOrThrow(Long categoryId) {
+        return ExceptionHelper.findOrThrow(
+                categoryRepository.findById(categoryId).orElse(null),
+                "Category",
+                categoryId
+        );
+    }
+
+    private Manufacturer findManufacturerByIdOrThrow(Long manufacturerId) {
+        return ExceptionHelper.findOrThrow(
+                manufacturerRepository.findById(manufacturerId).orElse(null),
+                "Manufacturer",
+                manufacturerId
+        );
+    }
+
+    private void checkForDuplicateProduct(String referenceNumber, Long excludeId) {
+        if (!StringUtils.hasText(referenceNumber)) {
+            return;
+        }
+
+        boolean exists = (excludeId == null) ?
+                productRepository.existsByReferenceNumberIgnoreCase(referenceNumber) :
+                productRepository.findAll().stream()
+                        .anyMatch(p -> !p.getId().equals(excludeId) &&
+                                p.getReferenceNumber().equalsIgnoreCase(referenceNumber));
+
+        if (exists) {
+            throw new DuplicateResourceException(
+                    "Product already exists with reference number: " + referenceNumber);
+        }
+    }
+
+    private String uploadImageSafely(MultipartFile file, String folder) {
+        try {
+            return s3Service.uploadProductImage(file, folder);
+        } catch (Exception e) {
+            log.error("Error uploading image: {}", e.getMessage());
+            throw new BusinessLogicException("Failed to upload image: " + e.getMessage());
+        }
+    }
+
+    private List<String> uploadAdditionalImages(List<MultipartFile> additionalImages, List<String> uploadedTracker) {
+        List<String> additionalImageUrls = new ArrayList<>();
+
+        if (additionalImages != null && !additionalImages.isEmpty()) {
+            log.debug("Uploading {} additional images", additionalImages.size());
+
+            for (MultipartFile additionalImage : additionalImages) {
+                if (!additionalImage.isEmpty()) {
+                    String additionalImageUrl = uploadImageSafely(additionalImage, "products");
+                    additionalImageUrls.add(additionalImageUrl);
+                    uploadedTracker.add(additionalImageUrl);
+                }
+            }
+        }
+
+        return additionalImageUrls;
+    }
+
+    private void cleanupImagesOnError(List<String> imageUrls) {
+        if (imageUrls != null && !imageUrls.isEmpty()) {
+            try {
+                s3Service.deleteImages(imageUrls);
+            } catch (Exception e) {
+                log.error("Failed to cleanup images on error: {}", e.getMessage());
+            }
+        }
+    }
+
+    private void cleanupImageOnError(String imageUrl) {
+        if (StringUtils.hasText(imageUrl)) {
+            try {
+                s3Service.deleteImage(imageUrl);
+            } catch (Exception e) {
+                log.error("Failed to cleanup image on error: {}", e.getMessage());
+            }
+        }
+    }
+
+    private List<String> collectAllProductImages(Product product) {
+        List<String> allImages = new ArrayList<>();
+
+        if (product.getPrimaryImageUrl() != null) {
+            allImages.add(product.getPrimaryImageUrl());
+        }
+
+        if (product.getAdditionalImages() != null) {
+            allImages.addAll(product.getAdditionalImages());
+        }
+
+        return allImages;
+    }
+
+    private void updateProductImagesForAdd(Product product, String imageUrl, boolean isPrimary) {
+        if (isPrimary) {
+            if (product.getPrimaryImageUrl() != null) {
+                if (product.getAdditionalImages() == null) {
+                    product.setAdditionalImages(new ArrayList<>());
+                }
+                product.getAdditionalImages().add(0, product.getPrimaryImageUrl());
+            }
+            product.setPrimaryImageUrl(imageUrl);
+        } else {
+            if (product.getAdditionalImages() == null) {
+                product.setAdditionalImages(new ArrayList<>());
+            }
+            product.getAdditionalImages().add(imageUrl);
+        }
+    }
+
+    private boolean removeImageFromProduct(Product product, String imageUrl) {
         boolean wasDeleted = false;
 
         if (imageUrl.equals(product.getPrimaryImageUrl())) {
@@ -257,10 +994,10 @@ public class ProductService {
             wasDeleted = true;
         }
 
-        if (!wasDeleted) {
-            throw new ResourceNotFoundException("Image not found for this product");
-        }
+        return wasDeleted;
+    }
 
+    private void ensureProductHasPrimaryImage(Product product) {
         if (product.getPrimaryImageUrl() == null) {
             if (product.getAdditionalImages() != null && !product.getAdditionalImages().isEmpty()) {
                 product.setPrimaryImageUrl(product.getAdditionalImages().remove(0));
@@ -268,142 +1005,46 @@ public class ProductService {
                 throw new BusinessLogicException("Cannot delete last image. Product must have at least one image.");
             }
         }
-
-        productRepository.save(product);
-
-        s3Service.deleteImage(imageUrl);
-
-        log.info("Deleted image {} from product {}", imageUrl, productId);
     }
 
-    @Transactional(readOnly = true)
-    public Page<ProductResponseDTO> getAllProducts(Pageable pageable, String lang) {
-        return productRepository.findByActiveTrue(pageable)
-                .map(p -> convertToResponseDTO(p, lang));
+    private ProductImageUploadResponseDTO createImageUploadResponse(
+            MultipartFile file, String imageUrl, boolean isPrimary, Product product) {
+
+        int order = isPrimary ? 0 :
+                (product.getAdditionalImages() != null ? product.getAdditionalImages().size() : 1);
+
+        return ProductImageUploadResponseDTO.builder()
+                .imageUrl(imageUrl)
+                .fileName(file.getOriginalFilename())
+                .fileSize(file.getSize())
+                .contentType(file.getContentType())
+                .isPrimary(isPrimary)
+                .order(order)
+                .build();
     }
 
-    @Transactional(readOnly = true)
-    public ProductResponseDTO getProductById(Long id, String lang) {
-        Product product = productRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + id));
-        return convertToResponseDTO(product, lang);
-    }
+    // ============ EXISTING METHODS (Updated with validation) ============
 
-    @Transactional(readOnly = true)
-    public Page<ProductResponseDTO> getProductsByCategory(Long categoryId, Pageable pageable, String lang) {
-        return productRepository.findByActiveTrueAndCategoryId(categoryId, pageable)
-                .map(p -> convertToResponseDTO(p, lang));
-    }
-
-    @Transactional(readOnly = true)
-    public Page<ProductResponseDTO> getProductsByBrand(Long brandId, Pageable pageable, String lang) {
-        return productRepository.findByActiveTrueAndManufacturerId(brandId, pageable)
-                .map(p -> convertToResponseDTO(p, lang));
-    }
-
-    @Transactional(readOnly = true)
-    public Page<ProductResponseDTO> getFeaturedProducts(Pageable pageable, String lang) {
-        return productRepository.findByActiveTrueAndFeaturedTrue(pageable)
-                .map(p -> convertToResponseDTO(p, lang));
-    }
-
-    @Transactional(readOnly = true)
-    public Page<ProductResponseDTO> getProductsOnSale(Pageable pageable, String lang) {
-        return productRepository.findProductsOnSale(pageable)
-                .map(p -> convertToResponseDTO(p, lang));
-    }
-
-    @Transactional(readOnly = true)
-    public Page<ProductResponseDTO> searchProducts(String query, Pageable pageable, String lang) {
-        return productRepository.searchProducts(query, pageable)
-                .map(p -> convertToResponseDTO(p, lang));
-    }
-
-    @Transactional(readOnly = true)
-    public Page<ProductResponseDTO> filterProducts(Long categoryId, Long brandId,
-                                                   BigDecimal minPrice, BigDecimal maxPrice,
-                                                   ProductStatus status, Boolean onSale, String query,
-                                                   Pageable pageable, String lang) {
-        return productRepository.findProductsWithFilters(categoryId, brandId, minPrice, maxPrice,
-                        status, onSale, query, pageable)
-                .map(p -> convertToResponseDTO(p, lang));
-    }
-
-    @Transactional(readOnly = true)
-    public List<ProductResponseDTO> getRelatedProducts(Long productId, int limit, String lang) {
-        Product product = productRepository.findById(productId)
-                .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
-
-        Pageable pageable = Pageable.ofSize(limit);
-        return productRepository.findRelatedProducts(productId, product.getCategory().getId(),
-                        product.getManufacturer().getId(), pageable)
-                .stream()
-                .map(p -> convertToResponseDTO(p, lang))
-                .toList();
-    }
-
-    @Transactional
-    public ProductResponseDTO createProductRest(ProductCreateRequestDTO dto, String lang) {
-        if (productRepository.existsByReferenceNumberIgnoreCase(dto.getReferenceNumber())) {
-            throw new DuplicateResourceException("Product already exists with reference number: " + dto.getReferenceNumber());
-        }
-
+    private Product createProductFromCreateRequest(ProductCreateRequestDTO dto) {
         Product product = new Product();
         updateProductFieldsFromRest(product, dto);
-        product = productRepository.save(product);
-
-        log.info("Created product via REST API with id: {} and reference: {}", product.getId(), product.getReferenceNumber());
-        return convertToResponseDTO(product, lang);
+        return product;
     }
 
-    @Transactional
-    public ProductResponseDTO updateProductRest(Long id, ProductUpdateRequestDTO dto, String lang) {
-        Product product = productRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + id));
-
-        if (!product.getReferenceNumber().equalsIgnoreCase(dto.getReferenceNumber()) &&
-                productRepository.existsByReferenceNumberIgnoreCase(dto.getReferenceNumber())) {
-            throw new DuplicateResourceException("Product already exists with reference number: " + dto.getReferenceNumber());
-        }
-
-        if (dto.getImagesToDelete() != null && !dto.getImagesToDelete().isEmpty()) {
-            handleImageDeletions(product, dto.getImagesToDelete());
-        }
-
-        updateProductFieldsFromRest(product, dto);
-
-        if (dto.getImages() != null && !dto.getImages().isEmpty()) {
-            handleImageReordering(product, dto.getImages());
-        }
-
-        product = productRepository.save(product);
-
-        log.info("Updated product via REST API with id: {} and reference: {}", product.getId(), product.getReferenceNumber());
-        return convertToResponseDTO(product, lang);
-    }
-
-    @Transactional
-    public ProductResponseDTO reorderProductImages(Long productId, List<ProductImageUpdateDTO> images, String lang) {
-        Product product = productRepository.findById(productId)
-                .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
-
-        handleImageReordering(product, images);
-        product = productRepository.save(product);
-
-        return convertToResponseDTO(product, lang);
-    }
-
-    private void updateProductFieldsFromExternal(Product product, ProductRequestDto dto) {
-        setNamesToProduct(product, dto);
-        setDescriptionToProduct(product, dto);
+    private void updateProductFieldsFromRest(Product product, ProductCreateRequestDTO dto) {
         product.setReferenceNumber(dto.getReferenceNumber());
+        product.setNameEn(dto.getNameEn());
+        product.setNameBg(dto.getNameBg());
+        product.setDescriptionEn(dto.getDescriptionEn());
+        product.setDescriptionBg(dto.getDescriptionBg());
         product.setModel(dto.getModel());
         product.setBarcode(dto.getBarcode());
-        product.setExternalId(dto.getId());
-        product.setWorkflowId(dto.getIdWF());
 
-        setCategoryToProduct(product, dto);
-        setManufacturer(product, dto);
+        Category category = findCategoryByIdOrThrow(dto.getCategoryId());
+        product.setCategory(category);
+
+        Manufacturer manufacturer = findManufacturerByIdOrThrow(dto.getManufacturerId());
+        product.setManufacturer(manufacturer);
 
         product.setStatus(ProductStatus.fromCode(dto.getStatus()));
         product.setPriceClient(dto.getPriceClient());
@@ -411,111 +1052,120 @@ public class ProductService {
         product.setPricePromo(dto.getPricePromo());
         product.setPriceClientPromo(dto.getPriceClientPromo());
         product.setMarkupPercentage(dto.getMarkupPercentage());
+
+        product.setShow(dto.getShow());
+        product.setWarranty(dto.getWarranty());
+        product.setWeight(dto.getWeight());
+        product.setActive(dto.getActive());
+        product.setFeatured(dto.getFeatured());
+
         product.calculateFinalPrice();
 
-        setImagesToProduct(product, dto);
-        setParametersToProduct(product, dto);
+        setParametersFromRest(product, dto.getParameters());
     }
 
-    private void setManufacturer(Product product, ProductRequestDto dto) {
-        Manufacturer manufacturer = manufacturerRepository.findById(dto.getManufacturerId())
-                .orElseThrow(() -> new ResourceNotFoundException("Manufacturer not found: " + dto.getManufacturerId()));
-        product.setManufacturer(manufacturer);
-    }
+    private void processImageOperations(Product product, ProductImageOperationsDTO imageOperations,
+                                        MultipartFile newPrimaryImage, List<MultipartFile> newAdditionalImages,
+                                        List<String> newUploadedImages, List<String> imagesToCleanup) {
 
-    private static void setImagesToProduct(Product product, ProductRequestDto extProduct) {
-        if (extProduct.getImages() != null && !extProduct.getImages().isEmpty()) {
-            product.setPrimaryImageUrl(extProduct.getImages().get(0).getHref());
-            product.setAdditionalImages(
-                    extProduct.getImages().stream().skip(1).map(ImageDto::getHref).toList()
-            );
-        }
-    }
-
-    private void setCategoryToProduct(Product product, ProductRequestDto extProduct) {
-        categoryRepository.findByExternalId(extProduct.getCategories().get(0).getId())
-                .ifPresent(product::setCategory);
-    }
-
-    private static void setDescriptionToProduct(Product product, ProductRequestDto extProduct) {
-        if (extProduct.getDescription() != null) {
-            extProduct.getDescription().forEach(desc -> {
-                switch (desc.getLanguageCode()) {
-                    case "bg" -> product.setDescriptionBg(desc.getText());
-                    case "en" -> product.setDescriptionEn(desc.getText());
-                }
-            });
-        }
-    }
-
-    private static void setNamesToProduct(Product product, ProductRequestDto extProduct) {
-        if (extProduct.getName() != null) {
-            extProduct.getName().forEach(name -> {
-                switch (name.getLanguageCode()) {
-                    case "bg" -> product.setNameBg(name.getText());
-                    case "en" -> product.setNameEn(name.getText());
-                }
-            });
-        }
-    }
-
-    @Transactional
-    public void deleteProduct(Long id) {
-        log.info("Deleting product with id: {}", id);
-
-        Product product = productRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + id));
-
-        List<String> allImages = new ArrayList<>();
-        if (product.getPrimaryImageUrl() != null) {
-            allImages.add(product.getPrimaryImageUrl());
-        }
-        if (product.getAdditionalImages() != null) {
-            allImages.addAll(product.getAdditionalImages());
-        }
-        s3Service.deleteImages(allImages);
-
-        product.setActive(false);
-        productRepository.save(product);
-
-        log.info("Product soft deleted successfully with id: {}", id);
-    }
-
-    @Transactional
-    public void permanentDeleteProduct(Long id) {
-        log.info("Permanently deleting product with id: {}", id);
-
-        Product product = productRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + id));
-
-        List<String> allImages = new ArrayList<>();
-        if (product.getPrimaryImageUrl() != null) {
-            allImages.add(product.getPrimaryImageUrl());
-        }
-        if (product.getAdditionalImages() != null) {
-            allImages.addAll(product.getAdditionalImages());
-        }
-        s3Service.deleteImages(allImages);
-
-        productRepository.deleteById(id);
-        log.info("Product permanently deleted successfully with id: {}", id);
-    }
-
-    @Transactional(readOnly = true)
-    public String getOriginalImageUrl(Long productId, boolean isPrimary, int index) {
-        Product product = productRepository.findById(productId)
-                .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
-
-        if (isPrimary) {
-            return product.getPrimaryImageUrl();
-        } else {
-            if (product.getAdditionalImages() != null && index >= 0 && index < product.getAdditionalImages().size()) {
-                return product.getAdditionalImages().get(index);
+        // Handle image deletions
+        if (imageOperations != null && imageOperations.getImagesToDelete() != null) {
+            for (String imageUrl : imageOperations.getImagesToDelete()) {
+                removeImageFromProduct(product, imageUrl);
+                imagesToCleanup.add(imageUrl);
             }
         }
 
-        return null;
+        // Handle primary image replacement
+        if (newPrimaryImage != null && !newPrimaryImage.isEmpty()) {
+            if (product.getPrimaryImageUrl() != null) {
+                imagesToCleanup.add(product.getPrimaryImageUrl());
+            }
+            String newPrimaryUrl = uploadImageSafely(newPrimaryImage, "products");
+            product.setPrimaryImageUrl(newPrimaryUrl);
+            newUploadedImages.add(newPrimaryUrl);
+        }
+
+        // Handle additional image uploads
+        if (newAdditionalImages != null && !newAdditionalImages.isEmpty()) {
+            if (product.getAdditionalImages() == null) {
+                product.setAdditionalImages(new ArrayList<>());
+            }
+
+            for (MultipartFile additionalImage : newAdditionalImages) {
+                if (!additionalImage.isEmpty()) {
+                    String additionalUrl = uploadImageSafely(additionalImage, "products");
+                    product.getAdditionalImages().add(additionalUrl);
+                    newUploadedImages.add(additionalUrl);
+                }
+            }
+        }
+
+        // Handle image reordering
+        if (imageOperations != null && imageOperations.getReorderImages() != null) {
+            handleImageReordering(product, imageOperations.getReorderImages());
+        }
     }
+
+    private void handleImageReordering(Product product, List<ProductImageUpdateDTO> images) {
+        Optional<ProductImageUpdateDTO> primaryImage = images.stream()
+                .filter(img -> Boolean.TRUE.equals(img.getIsPrimary()))
+                .findFirst();
+
+        primaryImage.ifPresent(productImageUpdateDTO ->
+                product.setPrimaryImageUrl(productImageUpdateDTO.getImageUrl()));
+
+        List<String> additionalImages = images.stream()
+                .filter(img -> !Boolean.TRUE.equals(img.getIsPrimary()))
+                .sorted(Comparator.comparing(ProductImageUpdateDTO::getOrder,
+                        Comparator.nullsLast(Comparator.naturalOrder())))
+                .map(ProductImageUpdateDTO::getImageUrl)
+                .collect(Collectors.toList());
+
+        if (product.getAdditionalImages() == null) {
+            product.setAdditionalImages(new ArrayList<>());
+        } else {
+            product.getAdditionalImages().clear();
+        }
+        product.getAdditionalImages().addAll(additionalImages);
+    }
+
+    private void setParametersFromRest(Product product, List<ProductParameterCreateDTO> parameters) {
+        if (parameters == null) {
+            product.setProductParameters(new HashSet<>());
+            return;
+        }
+
+        Set<ProductParameter> newProductParameters = new HashSet<>();
+
+        for (ProductParameterCreateDTO paramDto : parameters) {
+            Parameter parameter = ExceptionHelper.findOrThrow(
+                    parameterRepository.findById(paramDto.getParameterId()).orElse(null),
+                    "Parameter", paramDto.getParameterId()
+            );
+
+            ParameterOption option = ExceptionHelper.findOrThrow(
+                    parameterOptionRepository.findById(paramDto.getParameterOptionId()).orElse(null),
+                    "ParameterOption", paramDto.getParameterOptionId()
+            );
+
+            if (!option.getParameter().getId().equals(parameter.getId())) {
+                throw new ValidationException(
+                        String.format("Parameter option %d does not belong to parameter %d",
+                                paramDto.getParameterOptionId(), paramDto.getParameterId()));
+            }
+
+            ProductParameter pp = new ProductParameter();
+            pp.setProduct(product);
+            pp.setParameter(parameter);
+            pp.setParameterOption(option);
+            newProductParameters.add(pp);
+        }
+
+        product.setProductParameters(newProductParameters);
+    }
+
+    // ============ CONVERSION METHODS ============
 
     private ProductResponseDTO convertToResponseDTO(Product product, String lang) {
         ProductResponseDTO dto = new ProductResponseDTO();
@@ -542,9 +1192,7 @@ public class ProductService {
         dto.setFeatured(product.getFeatured());
         dto.setShow(product.getShow());
 
-//        dto.setPrimaryImageUrl(product.getPrimaryImageUrl());
-//        dto.setAdditionalImages(product.getAdditionalImages());
-
+        // Set proxy image URLs
         if (product.getPrimaryImageUrl() != null) {
             dto.setPrimaryImageUrl("/api/images/product/" + product.getId() + "/primary");
         }
@@ -607,123 +1255,78 @@ public class ProductService {
                 .build();
     }
 
-    private void setParametersToProduct(Product product, ProductRequestDto extProduct) {
-        if (extProduct.getParameters() != null && product.getCategory() != null) {
-            product.getProductParameters().clear();
+    // ============ REMAINING READ METHODS (with validation) ============
 
-            for (ParameterValueRequestDto paramValue : extProduct.getParameters()) {
-                parameterRepository.findByExternalIdAndCategoryId(paramValue.getParameterId(), product.getCategory().getId())
-                        .ifPresent(parameter ->
-                                parameterOptionRepository.findByExternalIdAndParameterId(paramValue.getOptionId(), parameter.getId())
-                                        .ifPresent(option -> {
-                                            ProductParameter pp = new ProductParameter();
-                                            pp.setProduct(product);
-                                            pp.setParameter(parameter);
-                                            pp.setParameterOption(option);
-                                            product.getProductParameters().add(pp);
-                                        })
-                        );
-            }
-        }
+    @Transactional(readOnly = true)
+    public Page<ProductResponseDTO> getFeaturedProducts(Pageable pageable, String lang) {
+        log.debug("Fetching featured products");
+
+        validatePaginationParameters(pageable);
+        validateLanguage(lang);
+
+        return ExceptionHelper.wrapDatabaseOperation(() ->
+                        productRepository.findByActiveTrueAndFeaturedTrue(pageable)
+                                .map(p -> convertToResponseDTO(p, lang)),
+                "fetch featured products"
+        );
     }
 
-    private void handleImageReordering(Product product, List<ProductImageUpdateDTO> images) {
-        Optional<ProductImageUpdateDTO> primaryImage = images.stream()
-                .filter(img -> Boolean.TRUE.equals(img.getIsPrimary()))
-                .findFirst();
+    @Transactional(readOnly = true)
+    public Page<ProductResponseDTO> getProductsOnSale(Pageable pageable, String lang) {
+        log.debug("Fetching products on sale");
 
-        primaryImage.ifPresent(productImageUpdateDTO -> product.setPrimaryImageUrl(productImageUpdateDTO.getImageUrl()));
+        validatePaginationParameters(pageable);
+        validateLanguage(lang);
 
-        List<String> additionalImages = images.stream()
-                .filter(img -> !Boolean.TRUE.equals(img.getIsPrimary()))
-                .sorted(Comparator.comparing(ProductImageUpdateDTO::getOrder, Comparator.nullsLast(Comparator.naturalOrder())))
-                .map(ProductImageUpdateDTO::getImageUrl)
-                .collect(Collectors.toList());
-
-        if (product.getAdditionalImages() == null) {
-            product.setAdditionalImages(new ArrayList<>());
-        } else {
-            product.getAdditionalImages().clear();
-        }
-        product.getAdditionalImages().addAll(additionalImages);
+        return ExceptionHelper.wrapDatabaseOperation(() ->
+                        productRepository.findProductsOnSale(pageable)
+                                .map(p -> convertToResponseDTO(p, lang)),
+                "fetch products on sale"
+        );
     }
 
-    private void handleImageDeletions(Product product, List<String> imagesToDelete) {
-        for (String imageUrl : imagesToDelete) {
-            if (imageUrl.equals(product.getPrimaryImageUrl())) {
-                product.setPrimaryImageUrl(null);
+    @Transactional(readOnly = true)
+    public Page<ProductResponseDTO> filterProducts(Long categoryId, Long brandId,
+                                                   BigDecimal minPrice, BigDecimal maxPrice,
+                                                   ProductStatus status, Boolean onSale, String query,
+                                                   Pageable pageable, String lang) {
+        log.debug("Filtering products with multiple criteria");
+
+        String context = ExceptionHelper.createErrorContext(
+                "filterProducts", "Product", null,
+                String.format("categoryId: %s, brandId: %s, query: %s", categoryId, brandId, query));
+
+        return ExceptionHelper.wrapDatabaseOperation(() -> {
+            validatePaginationParameters(pageable);
+            validateLanguage(lang);
+
+            if (categoryId != null) {
+                validateCategoryId(categoryId);
             }
 
-            if (product.getAdditionalImages() != null) {
-                product.getAdditionalImages().remove(imageUrl);
+            if (brandId != null) {
+                validateManufacturerId(brandId);
             }
 
-            s3Service.deleteImage(imageUrl);
-        }
-    }
-
-    private void setParametersFromRest(Product product, List<ProductParameterCreateDTO> parameters) {
-        if (parameters == null) {
-            product.setProductParameters(new HashSet<>());
-            return;
-        }
-
-        Set<ProductParameter> newProductParameters = new HashSet<>();
-
-        for (ProductParameterCreateDTO paramDto : parameters) {
-            Parameter parameter = parameterRepository.findById(paramDto.getParameterId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Parameter not found with id: " + paramDto.getParameterId()));
-
-            ParameterOption option = parameterOptionRepository.findById(paramDto.getParameterOptionId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Parameter option not found with id: " + paramDto.getParameterOptionId()));
-
-            if (!option.getParameter().getId().equals(parameter.getId())) {
-                throw new IllegalArgumentException("Parameter option " + paramDto.getParameterOptionId() +
-                        " does not belong to parameter " + paramDto.getParameterId());
+            if (StringUtils.hasText(query)) {
+                validateSearchQuery(query);
             }
 
-            ProductParameter pp = new ProductParameter();
-            pp.setProduct(product);
-            pp.setParameter(parameter);
-            pp.setParameterOption(option);
-            newProductParameters.add(pp);
-        }
+            if (minPrice != null && minPrice.compareTo(BigDecimal.ZERO) < 0) {
+                throw new ValidationException("Minimum price cannot be negative");
+            }
 
-        product.setProductParameters(newProductParameters);
-    }
+            if (maxPrice != null && maxPrice.compareTo(BigDecimal.ZERO) < 0) {
+                throw new ValidationException("Maximum price cannot be negative");
+            }
 
-    private void updateProductFieldsFromRest(Product product, ProductCreateRequestDTO dto) {
-        product.setReferenceNumber(dto.getReferenceNumber());
-        product.setNameEn(dto.getNameEn());
-        product.setNameBg(dto.getNameBg());
-        product.setDescriptionEn(dto.getDescriptionEn());
-        product.setDescriptionBg(dto.getDescriptionBg());
-        product.setModel(dto.getModel());
-        product.setBarcode(dto.getBarcode());
+            if (minPrice != null && maxPrice != null && minPrice.compareTo(maxPrice) > 0) {
+                throw new ValidationException("Minimum price cannot be greater than maximum price");
+            }
 
-        Category category = categoryRepository.findById(dto.getCategoryId())
-                .orElseThrow(() -> new ResourceNotFoundException("Category not found with id: " + dto.getCategoryId()));
-        product.setCategory(category);
-
-        Manufacturer manufacturer = manufacturerRepository.findById(dto.getManufacturerId())
-                .orElseThrow(() -> new ResourceNotFoundException("Manufacturer not found with id: " + dto.getManufacturerId()));
-        product.setManufacturer(manufacturer);
-
-        product.setStatus(ProductStatus.fromCode(dto.getStatus()));
-        product.setPriceClient(dto.getPriceClient());
-        product.setPricePartner(dto.getPricePartner());
-        product.setPricePromo(dto.getPricePromo());
-        product.setPriceClientPromo(dto.getPriceClientPromo());
-        product.setMarkupPercentage(dto.getMarkupPercentage());
-
-        product.setShow(dto.getShow());
-        product.setWarranty(dto.getWarranty());
-        product.setWeight(dto.getWeight());
-        product.setActive(dto.getActive());
-        product.setFeatured(dto.getFeatured());
-
-        product.calculateFinalPrice();
-
-        setParametersFromRest(product, dto.getParameters());
+            return productRepository.findProductsWithFilters(categoryId, brandId, minPrice, maxPrice,
+                            status, onSale, query, pageable)
+                    .map(p -> convertToResponseDTO(p, lang));
+        }, context);
     }
 }

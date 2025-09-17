@@ -69,8 +69,15 @@ aws:
 # Server Configuration
 server:
     port: 8080
+    error:
+        include-message: always
+        include-binding-errors: always
+        include-stacktrace: on_param  # Include stack trace only when trace=true parameter is passed
+        include-exception: false
     servlet:
-        context-path: /
+        encoding:
+            charset: UTF-8
+            enabled: true
 
 # LOGGING CONFIGURATION
 logging:
@@ -89,9 +96,19 @@ logging:
         file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
     file:
         name: logs/techstore.log
+    logback:
+        rollingpolicy:
+            max-file-size: 10MB
+            max-history: 30
+            total-size-cap: 300MB
 
 # Application Specific Configuration
 app:
+    # Error handling configuration
+    error:
+        include-stack-trace: false  # Set to true in development
+        include-root-cause: true
+        max-error-details: 10
     sync:
         enabled: true
         cron: "0 0 2 * * *"  # 2:00 AM всеки ден

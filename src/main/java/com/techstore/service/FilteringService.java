@@ -29,7 +29,7 @@ import java.util.Set;
 @RequiredArgsConstructor
 @Slf4j
 @Transactional(readOnly = true)
-public class AdvancedFilteringService {
+public class FilteringService {
 
     private final ProductRepository productRepository;
     private final ParameterMapper parameterMapper;

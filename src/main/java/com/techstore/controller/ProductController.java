@@ -8,7 +8,7 @@ import com.techstore.dto.request.ProductImageUpdateDTO;
 import com.techstore.dto.request.ProductUpdateRequestDTO;
 import com.techstore.dto.response.ProductImageUploadResponseDTO;
 import com.techstore.enums.ProductStatus;
-import com.techstore.service.AdvancedFilteringService;
+import com.techstore.service.FilteringService;
 import com.techstore.service.ProductService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -46,7 +46,7 @@ import java.util.List;
 public class ProductController {
 
     private final ProductService productService;
-    private final AdvancedFilteringService filteringService;
+    private final FilteringService filteringService;
 
     // ===== PUBLIC READ ENDPOINTS =====
 

@@ -13,6 +13,7 @@ import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -39,12 +40,27 @@ public class ManufacturerService {
     }
 
     public ManufacturerResponseDto createManufacturer(ManufacturerRequestDto requestDto) {
+        // ✅ Check for existing manufacturer by external ID first
+        if (requestDto.getId() != null) {
+            // Note: You need to add this method to ManufacturerRepository:
+            // Optional<Manufacturer> findByExternalId(Long externalId);
+            Optional<Manufacturer> existing = manufacturerRepository.findByExternalId(requestDto.getId());
+            if (existing.isPresent()) {
+                throw new DuplicateResourceException("Manufacturer already exists with external ID: " + requestDto.getId());
+            }
+        }
 
+        // Secondary check by name (for manual creation)
         if (manufacturerRepository.existsByNameIgnoreCase(requestDto.getName())) {
             throw new DuplicateResourceException("Manufacturer already exists with name " + requestDto.getName());
         }
 
         Manufacturer manufacturer = new Manufacturer();
+
+        // ✅ Set external ID if provided
+        if (requestDto.getId() != null) {
+            manufacturer.setExternalId(requestDto.getId());
+        }
 
         manufacturer.setName(requestDto.getName());
 
@@ -60,9 +76,12 @@ public class ManufacturerService {
             manufacturer.setEuRepresentativeAddress(requestDto.getEuRepresentative().getAddress());
         }
 
-        manufacturerRepository.save(manufacturer);
-
+        manufacturer = manufacturerRepository.save(manufacturer);
         return manufacturerMapper.toResponseDto(manufacturer);
+    }
+
+    public Optional<Manufacturer> findByExternalId(Long externalId) {
+        return manufacturerRepository.findByExternalId(externalId);
     }
 
     public ManufacturerResponseDto updateManufacturer(Long id, ManufacturerRequestDto requestDto) {

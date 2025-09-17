@@ -33,41 +33,48 @@ public class ParameterService {
 
     @Transactional
     public ParameterResponseDto createParameter(ParameterRequestDto requestDto, String language) {
-
         Category category = categoryRepository.findById(requestDto.getCategoryId())
                 .orElseThrow(() -> new ResourceNotFoundException("Category not found with id " + requestDto.getCategoryId()));
 
         Parameter parameter = new Parameter();
+        parameter.setExternalId(requestDto.getId());
         parameter.setCategory(category);
+
         if (requestDto.getName() != null) {
+            final Parameter finalParameter = parameter;
             requestDto.getName().forEach(name -> {
                 if ("bg".equals(name.getLanguageCode())) {
-                    parameter.setNameBg(name.getText());
+                    finalParameter.setNameBg(name.getText());
                 } else if ("en".equals(name.getLanguageCode())) {
-                    parameter.setNameEn(name.getText());
+                    finalParameter.setNameEn(name.getText());
                 }
             });
         }
         parameter.setOrder(requestDto.getOrder());
 
-        Map<Long, ParameterOption> existingOptions = parameterOptionRepository
-                .findByParameterIdOrderByOrderAsc(parameter.getId())
-                .stream()
-                .collect(Collectors.toMap(ParameterOption::getExternalId, o -> o));
+        parameter = parameterRepository.save(parameter);
 
-        for (ParameterOptionRequestDto extOption : requestDto.getOptions()) {
-            ParameterOption option = existingOptions.get(extOption.getId());
+        if (requestDto.getOptions() != null) {
+            for (ParameterOptionRequestDto extOption : requestDto.getOptions()) {
+                ParameterOption option = new ParameterOption();
+                option.setExternalId(extOption.getId());
+                option.setParameter(parameter);
+                option.setOrder(extOption.getOrder());
 
-            if (option == null) {
-                option = createParameterOptionFromExternal(extOption, parameter);
-                parameterOptionRepository.save(option);
-            } else {
-                updateParameterOptionFromExternal(option, extOption);
+                if (extOption.getName() != null) {
+                    final ParameterOption finalOption = option;
+                    extOption.getName().forEach(name -> {
+                        if ("bg".equals(name.getLanguageCode())) {
+                            finalOption.setNameBg(name.getText());
+                        } else if ("en".equals(name.getLanguageCode())) {
+                            finalOption.setNameEn(name.getText());
+                        }
+                    });
+                }
+
                 parameterOptionRepository.save(option);
             }
         }
-
-        parameterRepository.save(parameter);
 
         return parameterMapper.toResponseDto(parameter, language);
     }

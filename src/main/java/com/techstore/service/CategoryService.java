@@ -1,6 +1,7 @@
 package com.techstore.service;
 
 import com.techstore.dto.CategoryResponseDTO;
+import com.techstore.dto.external.NameDto;
 import com.techstore.dto.response.CategorySummaryDTO;
 import com.techstore.dto.request.CategoryRequestDto;
 import com.techstore.entity.Category;
@@ -56,36 +57,71 @@ public class CategoryService {
 
     public CategoryResponseDTO createCategory(CategoryRequestDto extCategory) {
         SyncLog syncLog = createSyncLog("CATEGORIES");
-        Category category = new Category();
-        category.setExternalId(extCategory.getId());
-        category.setShow(extCategory.getShow());
-        category.setSortOrder(extCategory.getOrder());
+        long startTime = System.currentTimeMillis();
 
-        Category parent = findById(extCategory.getParent());
-        category.setParent(parent);
+        try {
+            if (categoryRepository.findByExternalId(extCategory.getId()).isPresent()) {
+                throw new DuplicateResourceException("Category already exists with external ID: " + extCategory.getId());
+            }
 
-        if (extCategory.getName() != null) {
-            extCategory.getName().forEach(name -> {
-                if ("bg".equals(name.getLanguageCode())) {
-                    category.setNameBg(name.getText());
-                } else if ("en".equals(name.getLanguageCode())) {
-                    category.setNameEn(name.getText());
+            Category category = new Category();
+            category.setExternalId(extCategory.getId());
+            category.setShow(extCategory.getShow());
+            category.setSortOrder(extCategory.getOrder());
+
+            if (extCategory.getParent() != null && extCategory.getParent() != 0) {
+                categoryRepository.findByExternalId(extCategory.getParent())
+                        .ifPresent(category::setParent);
+            }
+
+            if (extCategory.getName() != null) {
+                for (NameDto name : extCategory.getName()) {
+                    if ("bg".equals(name.getLanguageCode())) {
+                        category.setNameBg(name.getText());
+                    } else if ("en".equals(name.getLanguageCode())) {
+                        category.setNameEn(name.getText());
+                    }
                 }
-            });
+            }
+
+            String baseName = category.getNameEn() != null ? category.getNameEn() : category.getNameBg();
+            category.setSlug(generateSlug(baseName));
+
+            category = categoryRepository.save(category);
+
+            // ✅ Update sync log properly
+            updateSyncLogSimple(syncLog, "SUCCESS", 1L, 1L, 0L, 0L, null, startTime);
+
+            log.info("Category created successfully with id: {}", category.getId());
+            return convertToResponseDTO(category);
+
+        } catch (Exception e) {
+            // ✅ Handle errors properly
+            updateSyncLogSimple(syncLog, "FAILED", 0L, 0L, 0L, 1L, e.getMessage(), startTime);
+            log.error("Error creating category with external ID: {}", extCategory.getId(), e);
+            throw e;
         }
+    }
 
-        String baseName = category.getNameEn() != null ? category.getNameEn() : category.getNameBg();
-        category.setSlug(generateSlug(baseName));
+    // Add this helper method
+    private void updateSyncLogSimple(SyncLog syncLog, String status, long processed,
+                                     long created, long updated, long errors,
+                                     String errorMessage, long startTime) {
+        try {
+            syncLog.setStatus(status);
+            syncLog.setRecordsProcessed(processed);
+            syncLog.setRecordsCreated(created);
+            syncLog.setRecordsUpdated(updated);
+            syncLog.setDurationMs(System.currentTimeMillis() - startTime);
 
-        categoryRepository.save(category);
+            if (errorMessage != null) {
+                syncLog.setErrorMessage(errorMessage);
+            }
 
-        syncLog.setStatus("SUCCESS");
-        syncLog.setRecordsProcessed(1L);
-        syncLog.setRecordsCreated(1L);
-        syncLog.setRecordsUpdated(0L);
-
-        log.info("Category created successfully with id: {}", category.getId());
-        return convertToResponseDTO(category);
+            syncLogRepository.save(syncLog);
+        } catch (Exception e) {
+            log.error("Failed to update sync log: {}", e.getMessage());
+        }
     }
 
     public CategoryResponseDTO updateCategory(Long id, CategoryRequestDto requestDTO) {

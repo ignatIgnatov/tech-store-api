@@ -10,6 +10,7 @@ import com.techstore.dto.response.ProductImageUploadResponseDTO;
 import com.techstore.enums.ProductStatus;
 import com.techstore.service.FilteringService;
 import com.techstore.service.ProductService;
+import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -47,8 +48,6 @@ public class ProductController {
 
     private final ProductService productService;
     private final FilteringService filteringService;
-
-    // ===== PUBLIC READ ENDPOINTS =====
 
     @GetMapping
     @Operation(summary = "Get all products", description = "Retrieve paginated list of active products")
@@ -134,6 +133,7 @@ public class ProductController {
         return ResponseEntity.ok(products);
     }
 
+    @Hidden
     @GetMapping("/search")
     @Operation(summary = "Search products", description = "Search products by text query")
     public ResponseEntity<Page<ProductResponseDTO>> searchProducts(
@@ -152,6 +152,7 @@ public class ProductController {
         return ResponseEntity.ok(products);
     }
 
+    @Hidden
     @GetMapping("/filter")
     @Operation(summary = "Filter products", description = "Filter products with multiple criteria")
     public ResponseEntity<Page<ProductResponseDTO>> filterProducts(
@@ -179,6 +180,7 @@ public class ProductController {
         return ResponseEntity.ok(products);
     }
 
+    @Hidden
     @PostMapping("/filter/advanced")
     @Operation(summary = "Advanced product filtering", description = "Filter products with advanced specification-based filters")
     public ResponseEntity<Page<ProductResponseDTO>> filterProductsAdvanced(
@@ -197,6 +199,7 @@ public class ProductController {
         return ResponseEntity.ok(products);
     }
 
+    @Hidden
     @GetMapping("/{id}/related")
     @Operation(summary = "Get related products", description = "Get products related to the specified product")
     public ResponseEntity<List<ProductResponseDTO>> getRelatedProducts(
@@ -209,9 +212,9 @@ public class ProductController {
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
-    @Operation(summary = "Create product with images", description = "Create a new product with required images in single operation")
-    public ResponseEntity<ProductResponseDTO> createProductWithImages(
+//    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
+    @Operation(summary = "Create product", description = "Create a new product with required images in single operation")
+    public ResponseEntity<ProductResponseDTO> createProduct(
             @RequestPart("product") @Valid ProductCreateRequestDTO productData,
             @RequestPart("primaryImage") MultipartFile primaryImage,
             @RequestPart(value = "additionalImages", required = false) List<MultipartFile> additionalImages,
@@ -228,9 +231,9 @@ public class ProductController {
     }
 
     @PutMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
+//    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
     @Operation(summary = "Update product with image management", description = "Update product and manage images in single operation")
-    public ResponseEntity<ProductResponseDTO> updateProductWithImages(
+    public ResponseEntity<ProductResponseDTO> updateProduct(
             @PathVariable Long id,
             @RequestPart("product") @Valid ProductUpdateRequestDTO productData,
             @RequestPart(value = "newPrimaryImage", required = false) MultipartFile newPrimaryImage,
@@ -246,31 +249,8 @@ public class ProductController {
         return ResponseEntity.ok(updatedProduct);
     }
 
-//    @PostMapping
-//    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
-//    @Operation(summary = "Create product", description = "Create a new product (Admin only)")
-//    public ResponseEntity<ProductResponseDTO> createProduct(
-//            @Valid @RequestBody ProductCreateRequestDTO requestDTO) {
-//
-//        log.info("Creating product with reference number: {}", requestDTO.getReferenceNumber());
-//        ProductResponseDTO createdProduct = productService.createProductRest(requestDTO);
-//        return ResponseEntity.status(HttpStatus.CREATED).body(createdProduct);
-//    }
-//
-//    @PutMapping("/{id}")
-//    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
-//    @Operation(summary = "Update product", description = "Update an existing product (Admin only)")
-//    public ResponseEntity<ProductResponseDTO> updateProduct(
-//            @PathVariable Long id,
-//            @Valid @RequestBody ProductUpdateRequestDTO requestDTO) {
-//
-//        log.info("Updating product with id: {}", id);
-//        ProductResponseDTO updatedProduct = productService.updateProductRest(id, requestDTO);
-//        return ResponseEntity.ok(updatedProduct);
-//    }
-
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
+//    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
     @Operation(summary = "Delete product", description = "Soft delete a product (Admin only)")
     public ResponseEntity<Void> deleteProduct(@PathVariable Long id) {
         log.info("Deleting product with id: {}", id);
@@ -279,7 +259,7 @@ public class ProductController {
     }
 
     @DeleteMapping("/{id}/permanent")
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+//    @PreAuthorize("hasRole('SUPER_ADMIN')")
     @Operation(summary = "Permanently delete product", description = "Permanently delete a product (Super Admin only)")
     public ResponseEntity<Void> permanentDeleteProduct(@PathVariable Long id) {
         log.info("Permanently deleting product with id: {}", id);
@@ -287,8 +267,7 @@ public class ProductController {
         return ResponseEntity.noContent().build();
     }
 
-    // ===== SIMPLIFIED IMAGE-ONLY OPERATIONS (for existing products) =====
-
+    @Hidden
     @PostMapping(value = "/{id}/images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
     @Operation(summary = "Add image to existing product", description = "Add single image to existing product")
@@ -302,6 +281,7 @@ public class ProductController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
+    @Hidden
     @DeleteMapping("/{id}/images")
     @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
     @Operation(summary = "Delete product image", description = "Delete specific image from product")
@@ -314,6 +294,7 @@ public class ProductController {
         return ResponseEntity.noContent().build();
     }
 
+    @Hidden
     @PutMapping("/{id}/images/reorder")
     @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
     @Operation(summary = "Reorder product images", description = "Reorder existing product images")

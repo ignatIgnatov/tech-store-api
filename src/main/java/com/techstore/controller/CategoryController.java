@@ -3,6 +3,7 @@ package com.techstore.controller;
 import com.techstore.dto.CategoryResponseDTO;
 import com.techstore.dto.request.CategoryRequestDto;
 import com.techstore.service.CategoryService;
+import io.swagger.v3.oas.annotations.Hidden;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -61,6 +62,7 @@ public class CategoryController {
         return ResponseEntity.ok(category);
     }
 
+    @Hidden
     @GetMapping("/slug/{slug}")
     public ResponseEntity<CategoryResponseDTO> getCategoryBySlug(@PathVariable String slug) {
         CategoryResponseDTO category = categoryService.getCategoryBySlug(slug);

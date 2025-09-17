@@ -1,6 +1,7 @@
 package com.techstore.controller;
 
 import com.techstore.service.SearchService;
+import io.swagger.v3.oas.annotations.Hidden;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+@Hidden
 @RestController
 @RequestMapping("/api/search")
 @RequiredArgsConstructor

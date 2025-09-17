@@ -3,6 +3,7 @@ package com.techstore.controller;
 import com.techstore.dto.request.ParameterRequestDto;
 import com.techstore.dto.response.ParameterResponseDto;
 import com.techstore.service.ParameterService;
+import io.swagger.v3.oas.annotations.Hidden;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
@@ -79,6 +80,7 @@ public class ParameterController {
         return ResponseEntity.ok(parameter);
     }
 
+    @Hidden
     @GetMapping("/all")
     public ResponseEntity<List<ParameterResponseDto>> getAllParameters(
             @RequestParam(defaultValue = "en") String language

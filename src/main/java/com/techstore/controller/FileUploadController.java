@@ -1,6 +1,7 @@
 package com.techstore.controller;
 
 import com.techstore.service.FileUploadService;
+import io.swagger.v3.oas.annotations.Hidden;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -10,6 +11,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Map;
 
+@Hidden
 @RestController
 @RequestMapping("/api/upload")
 @RequiredArgsConstructor

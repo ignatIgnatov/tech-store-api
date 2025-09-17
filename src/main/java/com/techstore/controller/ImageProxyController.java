@@ -1,6 +1,7 @@
 package com.techstore.controller;
 
 import com.techstore.service.ProductService;
+import io.swagger.v3.oas.annotations.Hidden;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,6 +16,7 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 
+@Hidden
 @RestController
 @RequestMapping("/api/images")
 @RequiredArgsConstructor

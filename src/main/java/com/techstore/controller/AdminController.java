@@ -1,6 +1,7 @@
 package com.techstore.controller;
 
 import com.techstore.service.SyncService;
+import io.swagger.v3.oas.annotations.Hidden;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -19,6 +20,7 @@ public class AdminController {
 
     private final SyncService syncService;
 
+    @Hidden
     @PostMapping("/sync/categories")
 //    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<String> syncCategories() {
@@ -31,6 +33,7 @@ public class AdminController {
         }
     }
 
+    @Hidden
     @PostMapping("/sync/manufacturers")
 //    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<String> syncManufacturers() {
@@ -43,6 +46,7 @@ public class AdminController {
         }
     }
 
+    @Hidden
     @PostMapping("/sync/parameters")
 //    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<String> syncParameters() {
@@ -55,6 +59,7 @@ public class AdminController {
         }
     }
 
+    @Hidden
     @PostMapping("/sync/products")
 //    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<String> syncProducts() {
@@ -67,6 +72,7 @@ public class AdminController {
         }
     }
 
+    @Hidden
     @PostMapping("/sync/products-by-category")
     public ResponseEntity<String> syncProductsByCat(@RequestParam("id") Long id) {
         try {
@@ -78,6 +84,7 @@ public class AdminController {
         }
     }
 
+    @Hidden
     @PostMapping("/sync/documents")
 //    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<String> syncDocuments() {
@@ -90,6 +97,7 @@ public class AdminController {
         }
     }
 
+    @Hidden
     @PostMapping("/sync/documents-by-product")
     public ResponseEntity<String> syncDocumentsByProduct(@RequestParam("id") Long productId) {
         try {
@@ -101,6 +109,7 @@ public class AdminController {
         }
     }
 
+    @Hidden
     @PostMapping("/sync/all")
 //    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<String> syncAll() {

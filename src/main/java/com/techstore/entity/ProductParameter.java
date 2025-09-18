@@ -18,11 +18,11 @@ public class ProductParameter extends BaseEntity {
     @JoinColumn(name = "product_id", nullable = false)
     private Product product;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "parameter_id", nullable = false)
     private Parameter parameter;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "parameter_option_id", nullable = false)
     private ParameterOption parameterOption;
 }

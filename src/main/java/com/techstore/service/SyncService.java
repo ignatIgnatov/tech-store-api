@@ -49,7 +49,6 @@ import java.util.stream.Collectors;
 @Slf4j
 public class SyncService {
 
-    private static final Set<Long> EXCLUDED_CATEGORY_IDS = Set.of(621L, 594L, 648L, 664L, 663L, 715L);
     private static final String LOG_STATUS_SUCCESS = "SUCCESS";
     private static final String LOG_STATUS_FAILED = "FAILED";
     private static final String LOG_STATUS_IN_PROGRESS = "IN_PROGRESS";
@@ -65,6 +64,8 @@ public class SyncService {
     private final DataSource dataSource;
     private final ProductDocumentRepository productDocumentRepository;
 
+    @Value("#{'${excluded.categories.external-ids}'.split(',')}")
+    private Set<Long> excludedCategories;
 
     @Value("${app.sync.enabled:true}")
     private boolean syncEnabled;
@@ -145,7 +146,7 @@ public class SyncService {
             long created = 0, updated = 0, skipped = 0;
 
             for (CategoryRequestDto extCategory : externalCategories) {
-                if (EXCLUDED_CATEGORY_IDS.contains(extCategory.getId())) {
+                if (excludedCategories.contains(extCategory.getId())) {
                     log.debug("Skipping excluded category with external ID: {}", extCategory.getId());
                     skipped++;
                     continue;

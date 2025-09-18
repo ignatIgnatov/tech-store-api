@@ -8,6 +8,7 @@ import com.techstore.dto.request.ProductParameterCreateDTO;
 import com.techstore.dto.request.ProductUpdateRequestDTO;
 import com.techstore.dto.response.CategorySummaryDTO;
 import com.techstore.dto.response.ManufacturerSummaryDto;
+import com.techstore.dto.response.ParameterOptionResponseDto;
 import com.techstore.dto.response.ProductImageUploadResponseDTO;
 import com.techstore.dto.response.ProductParameterResponseDto;
 import com.techstore.entity.Category;
@@ -41,8 +42,10 @@ import org.springframework.web.multipart.MultipartFile;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -67,6 +70,74 @@ public class ProductService {
     private static final long MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
     // ============ CREATE OPERATIONS ============
+
+    @Transactional(readOnly = true)
+    public void debugProductParameters(Long productId) {
+        log.info("=== DEBUG PRODUCT PARAMETERS ===");
+
+        Product product = findProductByIdOrThrow(productId);
+        log.info("Product ID: {}, Name: {}", product.getId(), product.getNameEn());
+
+        // Debug product parameters
+        Set<ProductParameter> productParameters = product.getProductParameters();
+        log.info("ProductParameters Set Size: {}", productParameters.size());
+
+        int counter = 1;
+        for (ProductParameter pp : productParameters) {
+            log.info("--- Parameter {} ---", counter++);
+            log.info("ProductParameter ID: {}", pp.getId());
+
+            if (pp.getParameter() != null) {
+                log.info("Parameter ID: {}, External ID: {}, Name EN: {}, Name BG: {}",
+                        pp.getParameter().getId(),
+                        pp.getParameter().getExternalId(),
+                        pp.getParameter().getNameEn(),
+                        pp.getParameter().getNameBg());
+            } else {
+                log.error("Parameter is NULL!");
+            }
+
+            if (pp.getParameterOption() != null) {
+                log.info("Option ID: {}, External ID: {}, Name EN: {}, Name BG: {}",
+                        pp.getParameterOption().getId(),
+                        pp.getParameterOption().getExternalId(),
+                        pp.getParameterOption().getNameEn(),
+                        pp.getParameterOption().getNameBg());
+            } else {
+                log.error("Parameter Option is NULL!");
+            }
+        }
+
+        // Test conversion
+        log.info("=== TESTING CONVERSION ===");
+        List<ProductParameterResponseDto> specifications = productParameters.stream()
+                .map(productParameter -> {
+                    ProductParameterResponseDto dto = convertToProductParameterResponse(productParameter, "en");
+                    log.info("Converted: Parameter ID={}, Name={}, Options Count={}",
+                            dto.getParameterId(), dto.getParameterNameEn(), dto.getOptions().size());
+                    return dto;
+                })
+                .toList();
+
+        log.info("Final Specifications List Size: {}", specifications.size());
+
+        // Test the grouping logic from convertToResponseDTO
+        log.info("=== TESTING GROUPING LOGIC ===");
+        Map<Long, ProductParameterResponseDto> uniqueSpecs = productParameters.stream()
+                .filter(pp -> pp.getParameter() != null && pp.getParameterOption() != null)
+                .collect(Collectors.toMap(
+                        pp -> pp.getParameter().getId(),  // Group by parameter ID
+                        pp -> convertToProductParameterResponse(pp, "en"),
+                        (existing, replacement) -> {
+                            log.info("DUPLICATE FOUND! Parameter ID: {}, keeping existing",
+                                    existing.getParameterId());
+                            return existing;  // Keep first one
+                        }));
+
+        log.info("Unique Specs Map Size: {}", uniqueSpecs.size());
+        uniqueSpecs.forEach((id, spec) ->
+                log.info("Unique Spec: ID={}, Name={}", id, spec.getParameterNameEn()));
+    }
 
     @CacheEvict(value = "products", allEntries = true)
     public ProductResponseDTO createProductWithImages(
@@ -1168,6 +1239,10 @@ public class ProductService {
     // ============ CONVERSION METHODS ============
 
     private ProductResponseDTO convertToResponseDTO(Product product, String lang) {
+        log.info("=== CONVERTING PRODUCT TO RESPONSE DTO ===");
+        log.info("Product ID: {}, Language: {}", product.getId(), lang);
+        log.info("ProductParameters count: {}", product.getProductParameters().size());
+
         ProductResponseDTO dto = new ProductResponseDTO();
 
         dto.setId(product.getId());
@@ -1207,9 +1282,125 @@ public class ProductService {
 
         dto.setWarranty(product.getWarranty());
         dto.setWeight(product.getWeight());
-        dto.setSpecifications(product.getProductParameters().stream()
-                .map(productParameter -> convertToProductParameterResponse(productParameter, lang))
-                .toList());
+
+        // ========== DETAILED LOGGING FOR SPECIFICATIONS ==========
+        log.info("--- PROCESSING SPECIFICATIONS ---");
+        Set<ProductParameter> productParams = product.getProductParameters();
+        log.info("Raw ProductParameter set size: {}", productParams.size());
+
+        // Log each ProductParameter before processing
+        int counter = 1;
+        for (ProductParameter pp : productParams) {
+            log.info("ProductParam {}: ID={}, Parameter={}, Option={}",
+                    counter++, pp.getId(),
+                    pp.getParameter() != null ? pp.getParameter().getNameEn() : "NULL",
+                    pp.getParameterOption() != null ? pp.getParameterOption().getNameEn() : "NULL");
+
+            if (pp.getParameter() != null) {
+                log.info("  Parameter details: ID={}, ExternalID={}, NameEN={}, NameBG={}",
+                        pp.getParameter().getId(),
+                        pp.getParameter().getExternalId(),
+                        pp.getParameter().getNameEn(),
+                        pp.getParameter().getNameBg());
+            }
+
+            if (pp.getParameterOption() != null) {
+                log.info("  Option details: ID={}, ExternalID={}, NameEN={}, NameBG={}",
+                        pp.getParameterOption().getId(),
+                        pp.getParameterOption().getExternalId(),
+                        pp.getParameterOption().getNameEn(),
+                        pp.getParameterOption().getNameBg());
+            }
+        }
+
+        // Filter out null parameters/options
+        List<ProductParameter> validParams = productParams.stream()
+                .filter(pp -> {
+                    boolean valid = pp.getParameter() != null && pp.getParameterOption() != null;
+                    if (!valid) {
+                        log.warn("Filtered out invalid ProductParameter ID: {} (null parameter or option)", pp.getId());
+                    }
+                    return valid;
+                })
+                .toList();
+
+        log.info("Valid ProductParameters after filtering: {}", validParams.size());
+
+        // Process each parameter and log conversion
+        Map<Long, ProductParameterResponseDto> uniqueSpecs = new HashMap<>();
+
+        for (ProductParameter pp : validParams) {
+            Long parameterId = pp.getParameter().getId();
+            log.info("Processing Parameter ID: {}, Name: {}", parameterId, pp.getParameter().getNameEn());
+
+            // Convert to DTO
+            ProductParameterResponseDto converted = convertToProductParameterResponse(pp, lang);
+
+            if (converted == null) {
+                log.error("convertToProductParameterResponse returned NULL for Parameter ID: {}", parameterId);
+                continue;
+            }
+
+            log.info("Converted DTO: ParameterID={}, Name={}, Options count={}",
+                    converted.getParameterId(), converted.getParameterNameEn(),
+                    converted.getOptions() != null ? converted.getOptions().size() : 0);
+
+            // Check if we already have this parameter (duplicate handling)
+            if (uniqueSpecs.containsKey(parameterId)) {
+                log.warn("DUPLICATE Parameter ID found: {}. Merging options...", parameterId);
+
+                ProductParameterResponseDto existing = uniqueSpecs.get(parameterId);
+                List<ParameterOptionResponseDto> combinedOptions = new ArrayList<>();
+                combinedOptions.addAll(existing.getOptions());
+                combinedOptions.addAll(converted.getOptions());
+
+                log.info("Before merge - Existing options: {}, New options: {}",
+                        existing.getOptions().size(), converted.getOptions().size());
+
+                // Remove duplicate options by ID
+                List<ParameterOptionResponseDto> uniqueOptions = combinedOptions.stream()
+                        .collect(Collectors.toMap(
+                                ParameterOptionResponseDto::getId,
+                                option -> option,
+                                (o1, o2) -> {
+                                    log.debug("Duplicate option ID: {}, keeping first", o1.getId());
+                                    return o1;
+                                }))
+                        .values()
+                        .stream()
+                        .sorted(Comparator.comparing(ParameterOptionResponseDto::getOrder))
+                        .toList();
+
+                existing.setOptions(uniqueOptions);
+                log.info("After merge - Final options count: {}", uniqueOptions.size());
+
+            } else {
+                log.info("Adding new Parameter ID: {} to unique specs", parameterId);
+                uniqueSpecs.put(parameterId, converted);
+            }
+        }
+
+        log.info("Final uniqueSpecs map size: {}", uniqueSpecs.size());
+
+        // Convert to list and set in DTO
+        List<ProductParameterResponseDto> finalSpecs = new ArrayList<>(uniqueSpecs.values());
+        log.info("Final specifications list size: {}", finalSpecs.size());
+
+        // Log final specifications
+        for (ProductParameterResponseDto spec : finalSpecs) {
+            log.info("Final Spec: ParameterID={}, Name={}, Options={}",
+                    spec.getParameterId(), spec.getParameterNameEn(),
+                    spec.getOptions().size());
+
+            for (ParameterOptionResponseDto option : spec.getOptions()) {
+                log.info("  Option: ID={}, Name={}", option.getId(), option.getName());
+            }
+        }
+
+        dto.setSpecifications(finalSpecs);
+
+        log.info("=== SPECIFICATIONS PROCESSING COMPLETE ===");
+        log.info("Final DTO specifications count: {}", dto.getSpecifications().size());
 
         if (product.getCategory() != null) {
             dto.setCategory(convertToCategorySummary(product.getCategory()));
@@ -1225,17 +1416,47 @@ public class ProductService {
         dto.setStatus(product.getStatus() != null ? product.getStatus().getCode() : 0);
         dto.setWorkflowId(product.getWorkflowId());
 
+        log.info("=== PRODUCT CONVERSION COMPLETE ===");
         return dto;
     }
 
     private ProductParameterResponseDto convertToProductParameterResponse(ProductParameter productParameter, String lang) {
-        return ProductParameterResponseDto.builder()
-                .parameterId(productParameter.getParameter().getId())
-                .parameterNameEn(productParameter.getParameter().getNameEn())
-                .parameterNameBg(productParameter.getParameter().getNameBg())
-                .options(productParameter.getParameter().getOptions().stream()
-                        .map(p -> parameterMapper.toOptionResponseDto(p, lang)).toList())
+        log.debug("=== Converting ProductParameter ===");
+        log.debug("ProductParameter ID: {}", productParameter.getId());
+
+        if (productParameter.getParameter() == null) {
+            log.error("Parameter is NULL for ProductParameter ID: {}", productParameter.getId());
+            return null;
+        }
+
+        if (productParameter.getParameterOption() == null) {
+            log.error("ParameterOption is NULL for ProductParameter ID: {}", productParameter.getId());
+            return null;
+        }
+
+        Parameter parameter = productParameter.getParameter();
+        ParameterOption option = productParameter.getParameterOption();
+
+        log.debug("Parameter: ID={}, External ID={}, Name EN={}, Name BG={}",
+                parameter.getId(), parameter.getExternalId(), parameter.getNameEn(), parameter.getNameBg());
+        log.debug("Option: ID={}, External ID={}, Name EN={}, Name BG={}",
+                option.getId(), option.getExternalId(), option.getNameEn(), option.getNameBg());
+
+        // Използвай ParameterMapper за option
+        ParameterOptionResponseDto optionDto = parameterMapper.toOptionResponseDto(option, lang);
+        log.debug("Mapped option DTO: ID={}, Name={}", optionDto.getId(), optionDto.getName());
+
+        ProductParameterResponseDto result = ProductParameterResponseDto.builder()
+                .parameterId(parameter.getId())
+                .parameterNameEn(parameter.getNameEn())
+                .parameterNameBg(parameter.getNameBg())
+                .options(List.of(optionDto))  // Само избраната опция
                 .build();
+
+        log.debug("Built ProductParameterResponseDto: Parameter ID={}, Options count={}",
+                result.getParameterId(), result.getOptions().size());
+
+        return result;
     }
 
     private CategorySummaryDTO convertToCategorySummary(Category category) {

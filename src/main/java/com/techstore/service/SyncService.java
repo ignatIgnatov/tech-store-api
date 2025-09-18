@@ -977,51 +977,119 @@ public class SyncService {
     }
 
     private void setParametersToProduct(Product product, ProductRequestDto extProduct) {
+        log.info("=== DEBUG PRODUCT PARAMETERS ===");
+        log.info("Product External ID: {}, Category ID: {}", extProduct.getId(), product.getCategory().getId());
+
         if (extProduct.getParameters() != null && product.getCategory() != null) {
+            log.info("External parameters count: {}", extProduct.getParameters().size());
+
             Set<ProductParameter> newProductParameters = new HashSet<>();
 
-            for (ParameterValueRequestDto paramValue : extProduct.getParameters()) {
+            for (int i = 0; i < extProduct.getParameters().size(); i++) {
+                ParameterValueRequestDto paramValue = extProduct.getParameters().get(i);
+
+                log.info("--- Parameter {} ---", i + 1);
+                log.info("External Parameter ID: {}, External Option ID: {}",
+                        paramValue.getParameterId(), paramValue.getOptionId());
+
+                // Логиране на parameter names
+                if (paramValue.getParameterName() != null) {
+                    paramValue.getParameterName().forEach(name ->
+                            log.info("Parameter Name ({}): {}", name.getLanguageCode(), name.getText()));
+                }
+
+                // Логиране на option names
+                if (paramValue.getOptionName() != null) {
+                    paramValue.getOptionName().forEach(name ->
+                            log.info("Option Name ({}): {}", name.getLanguageCode(), name.getText()));
+                }
+
                 Optional<Parameter> parameterOpt = parameterRepository
                         .findByExternalIdAndCategoryId(paramValue.getParameterId(), product.getCategory().getId());
 
                 if (parameterOpt.isPresent()) {
                     Parameter parameter = parameterOpt.get();
+                    log.info("✓ Parameter found - Internal ID: {}, Name: {}",
+                            parameter.getId(), parameter.getNameEn());
 
                     Optional<ParameterOption> optionOpt = parameterOptionRepository
                             .findByExternalIdAndParameterId(paramValue.getOptionId(), parameter.getId());
 
                     if (optionOpt.isPresent()) {
                         ParameterOption option = optionOpt.get();
+                        log.info("✓ Option found - Internal ID: {}, Name: {}",
+                                option.getId(), option.getNameEn());
 
                         ProductParameter pp = new ProductParameter();
                         pp.setProduct(product);
                         pp.setParameter(parameter);
                         pp.setParameterOption(option);
 
-                        newProductParameters.add(pp);
+                        boolean added = newProductParameters.add(pp);
+                        log.info("ProductParameter added to set: {}", added);
+
+                        if (!added) {
+                            log.warn("ProductParameter NOT added - possible duplicate");
+                            // Логиране на съществуващ ProductParameter
+                            newProductParameters.forEach(existing -> {
+                                if (existing.getParameter().getId().equals(parameter.getId()) &&
+                                        existing.getParameterOption().getId().equals(option.getId())) {
+                                    log.warn("Duplicate found: Parameter ID: {}, Option ID: {}",
+                                            existing.getParameter().getId(), existing.getParameterOption().getId());
+                                }
+                            });
+                        }
                     } else {
-                        log.warn("Parameter option not found - OptionId: {} for ParameterId: {} in ProductId: {}",
+                        log.error("✗ Parameter option NOT found - External OptionId: {} for Internal ParameterId: {} in ProductId: {}",
                                 paramValue.getOptionId(), parameter.getId(), extProduct.getId());
+
+                        // Проверка дали съществува с друг parameter ID
+                        List<ParameterOption> allOptionsForExternalId = parameterOptionRepository.findAll()
+                                .stream()
+                                .filter(opt -> opt.getExternalId().equals(paramValue.getOptionId()))
+                                .toList();
+
+                        if (!allOptionsForExternalId.isEmpty()) {
+                            log.error("But option exists with different parameter IDs:");
+                            allOptionsForExternalId.forEach(opt ->
+                                    log.error("  Option ID: {}, Parameter ID: {}, Parameter External ID: {}",
+                                            opt.getId(), opt.getParameter().getId(), opt.getParameter().getExternalId()));
+                        }
                     }
                 } else {
-                    log.warn("Parameter not found - ParameterId: {} for CategoryId: {} in ProductId: {}",
+                    log.error("✗ Parameter NOT found - External ParameterId: {} for CategoryId: {} in ProductId: {}",
                             paramValue.getParameterId(), product.getCategory().getId(), extProduct.getId());
+
+                    // Проверка дали съществува с друга категория
+                    Optional<Parameter> paramInOtherCategory = parameterRepository.findByExternalId(paramValue.getParameterId());
+                    if (paramInOtherCategory.isPresent()) {
+                        Parameter param = paramInOtherCategory.get();
+                        log.error("But parameter exists in category: {} (ID: {})",
+                                param.getCategory().getId(), param.getCategory().getExternalId());
+                    }
                 }
+
+                log.info("Current newProductParameters size: {}", newProductParameters.size());
             }
+
+            log.info("=== FINAL RESULT ===");
+            log.info("Total ProductParameters to be set: {}", newProductParameters.size());
+
+            newProductParameters.forEach(pp -> {
+                log.info("Final PP: Parameter '{}' -> Option '{}'",
+                        pp.getParameter().getNameEn(), pp.getParameterOption().getNameEn());
+            });
 
             product.setProductParameters(newProductParameters);
-            log.debug("Set {} product parameters for product with externalId: {}",
-                    newProductParameters.size(), extProduct.getId());
-        } else {
-            product.setProductParameters(new HashSet<>());
+            log.info("ProductParameters set on product");
 
-            if (extProduct.getParameters() == null) {
-                log.debug("No parameters provided for product with externalId: {}", extProduct.getId());
-            }
-            if (product.getCategory() == null) {
-                log.warn("Product category is null for product with externalId: {}", extProduct.getId());
-            }
+        } else {
+            log.error("Parameters or category is null - Parameters: {}, Category: {}",
+                    extProduct.getParameters() != null, product.getCategory() != null);
+            product.setProductParameters(new HashSet<>());
         }
+
+        log.info("=== END DEBUG PRODUCT PARAMETERS ===");
     }
 
     private String generateSlug(String name) {

@@ -82,8 +82,8 @@ server:
 # LOGGING CONFIGURATION
 logging:
     level:
-        com.techstore.service.ProductService: INFO
-        com.techstore.mapper: DEBUG
+#        com.techstore.service.ProductService: INFO
+#        com.techstore.mapper: DEBUG
         org.hibernate.engine.jdbc.connections.internal.DriverManagerConnectionProviderImpl: WARN
         org.hibernate.SQL: WARN
         org.hibernate.type.descriptor.sql: WARN
@@ -92,7 +92,7 @@ logging:
         org.springframework.security.config.annotation.authentication.configuration.InitializeUserDetailsBeanManagerConfigurer: ERROR
         org.springframework.security.web.FilterChainProxy: WARN
         org.hibernate.type.descriptor.sql.BasicBinder: ERROR
-#        com.techstore: DEBUG
+        com.techstore: DEBUG
     pattern:
         console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
         file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"

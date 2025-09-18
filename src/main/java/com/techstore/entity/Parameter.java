@@ -9,6 +9,8 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.Setter;
 import org.hibernate.search.mapper.pojo.mapping.definition.annotation.FullTextField;
@@ -17,14 +19,14 @@ import org.hibernate.search.mapper.pojo.mapping.definition.annotation.Indexed;
 import java.util.HashSet;
 import java.util.Set;
 
+@EqualsAndHashCode(callSuper = true)
 @Entity
 @Table(
         name = "parameters",
         uniqueConstraints = @UniqueConstraint(columnNames = {"category_id", "external_id"})
 )
 @Indexed
-@Getter
-@Setter
+@Data
 public class Parameter extends BaseEntity {
 
     @Column(name = "external_id", nullable = false)

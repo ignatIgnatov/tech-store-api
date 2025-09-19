@@ -40,10 +40,6 @@ public class DebugController {
     private final ProductService productService;
     private final ValiApiService valiApiService;
 
-    // Добави този метод в DebugController.java
-
-    // Добави този метод в DebugController.java
-
     @PostMapping("/sync-single-product/{externalId}")
     public ResponseEntity<Map<String, Object>> debugSyncSingleProduct(@PathVariable Long externalId) {
         Map<String, Object> result = new HashMap<>();

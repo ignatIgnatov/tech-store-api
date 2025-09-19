@@ -71,76 +71,8 @@ public class ProductService {
 
     // ============ CREATE OPERATIONS ============
 
-    @Transactional(readOnly = true)
-    public void debugProductParameters(Long productId) {
-        log.info("=== DEBUG PRODUCT PARAMETERS ===");
-
-        Product product = findProductByIdOrThrow(productId);
-        log.info("Product ID: {}, Name: {}", product.getId(), product.getNameEn());
-
-        // Debug product parameters
-        Set<ProductParameter> productParameters = product.getProductParameters();
-        log.info("ProductParameters Set Size: {}", productParameters.size());
-
-        int counter = 1;
-        for (ProductParameter pp : productParameters) {
-            log.info("--- Parameter {} ---", counter++);
-            log.info("ProductParameter ID: {}", pp.getId());
-
-            if (pp.getParameter() != null) {
-                log.info("Parameter ID: {}, External ID: {}, Name EN: {}, Name BG: {}",
-                        pp.getParameter().getId(),
-                        pp.getParameter().getExternalId(),
-                        pp.getParameter().getNameEn(),
-                        pp.getParameter().getNameBg());
-            } else {
-                log.error("Parameter is NULL!");
-            }
-
-            if (pp.getParameterOption() != null) {
-                log.info("Option ID: {}, External ID: {}, Name EN: {}, Name BG: {}",
-                        pp.getParameterOption().getId(),
-                        pp.getParameterOption().getExternalId(),
-                        pp.getParameterOption().getNameEn(),
-                        pp.getParameterOption().getNameBg());
-            } else {
-                log.error("Parameter Option is NULL!");
-            }
-        }
-
-        // Test conversion
-        log.info("=== TESTING CONVERSION ===");
-        List<ProductParameterResponseDto> specifications = productParameters.stream()
-                .map(productParameter -> {
-                    ProductParameterResponseDto dto = convertToProductParameterResponse(productParameter, "en");
-                    log.info("Converted: Parameter ID={}, Name={}, Options Count={}",
-                            dto.getParameterId(), dto.getParameterNameEn(), dto.getOptions().size());
-                    return dto;
-                })
-                .toList();
-
-        log.info("Final Specifications List Size: {}", specifications.size());
-
-        // Test the grouping logic from convertToResponseDTO
-        log.info("=== TESTING GROUPING LOGIC ===");
-        Map<Long, ProductParameterResponseDto> uniqueSpecs = productParameters.stream()
-                .filter(pp -> pp.getParameter() != null && pp.getParameterOption() != null)
-                .collect(Collectors.toMap(
-                        pp -> pp.getParameter().getId(),  // Group by parameter ID
-                        pp -> convertToProductParameterResponse(pp, "en"),
-                        (existing, replacement) -> {
-                            log.info("DUPLICATE FOUND! Parameter ID: {}, keeping existing",
-                                    existing.getParameterId());
-                            return existing;  // Keep first one
-                        }));
-
-        log.info("Unique Specs Map Size: {}", uniqueSpecs.size());
-        uniqueSpecs.forEach((id, spec) ->
-                log.info("Unique Spec: ID={}, Name={}", id, spec.getParameterNameEn()));
-    }
-
     @CacheEvict(value = "products", allEntries = true)
-    public ProductResponseDTO createProductWithImages(
+    public ProductResponseDTO createProduct(
             ProductCreateRequestDTO productData,
             MultipartFile primaryImage,
             List<MultipartFile> additionalImages, String lang) {
@@ -513,7 +445,73 @@ public class ProductService {
         }, context);
     }
 
-    // ============ UTILITY METHODS ============
+    @Transactional(readOnly = true)
+    public void debugProductParameters(Long productId) {
+        log.info("=== DEBUG PRODUCT PARAMETERS ===");
+
+        Product product = findProductByIdOrThrow(productId);
+        log.info("Product ID: {}, Name: {}", product.getId(), product.getNameEn());
+
+        // Debug product parameters
+        Set<ProductParameter> productParameters = product.getProductParameters();
+        log.info("ProductParameters Set Size: {}", productParameters.size());
+
+        int counter = 1;
+        for (ProductParameter pp : productParameters) {
+            log.info("--- Parameter {} ---", counter++);
+            log.info("ProductParameter ID: {}", pp.getId());
+
+            if (pp.getParameter() != null) {
+                log.info("Parameter ID: {}, External ID: {}, Name EN: {}, Name BG: {}",
+                        pp.getParameter().getId(),
+                        pp.getParameter().getExternalId(),
+                        pp.getParameter().getNameEn(),
+                        pp.getParameter().getNameBg());
+            } else {
+                log.error("Parameter is NULL!");
+            }
+
+            if (pp.getParameterOption() != null) {
+                log.info("Option ID: {}, External ID: {}, Name EN: {}, Name BG: {}",
+                        pp.getParameterOption().getId(),
+                        pp.getParameterOption().getExternalId(),
+                        pp.getParameterOption().getNameEn(),
+                        pp.getParameterOption().getNameBg());
+            } else {
+                log.error("Parameter Option is NULL!");
+            }
+        }
+
+        // Test conversion
+        log.info("=== TESTING CONVERSION ===");
+        List<ProductParameterResponseDto> specifications = productParameters.stream()
+                .map(productParameter -> {
+                    ProductParameterResponseDto dto = convertToProductParameterResponse(productParameter, "en");
+                    log.info("Converted: Parameter ID={}, Name={}, Options Count={}",
+                            dto.getParameterId(), dto.getParameterNameEn(), dto.getOptions().size());
+                    return dto;
+                })
+                .toList();
+
+        log.info("Final Specifications List Size: {}", specifications.size());
+
+        // Test the grouping logic from convertToResponseDTO
+        log.info("=== TESTING GROUPING LOGIC ===");
+        Map<Long, ProductParameterResponseDto> uniqueSpecs = productParameters.stream()
+                .filter(pp -> pp.getParameter() != null && pp.getParameterOption() != null)
+                .collect(Collectors.toMap(
+                        pp -> pp.getParameter().getId(),  // Group by parameter ID
+                        pp -> convertToProductParameterResponse(pp, "en"),
+                        (existing, replacement) -> {
+                            log.info("DUPLICATE FOUND! Parameter ID: {}, keeping existing",
+                                    existing.getParameterId());
+                            return existing;  // Keep first one
+                        }));
+
+        log.info("Unique Specs Map Size: {}", uniqueSpecs.size());
+        uniqueSpecs.forEach((id, spec) ->
+                log.info("Unique Spec: ID={}, Name={}", id, spec.getParameterNameEn()));
+    }
 
     @Transactional(readOnly = true)
     public String getOriginalImageUrl(Long productId, boolean isPrimary, int index) {
@@ -542,8 +540,6 @@ public class ProductService {
             return null;
         }, context);
     }
-
-    // ============ VALIDATION METHODS ============
 
     private void validateProductId(Long id) {
         if (id == null || id <= 0) {
@@ -1239,9 +1235,9 @@ public class ProductService {
     // ============ CONVERSION METHODS ============
 
     private ProductResponseDTO convertToResponseDTO(Product product, String lang) {
-        log.info("=== CONVERTING PRODUCT TO RESPONSE DTO ===");
-        log.info("Product ID: {}, Language: {}", product.getId(), lang);
-        log.info("ProductParameters count: {}", product.getProductParameters().size());
+        log.debug("=== CONVERTING PRODUCT TO RESPONSE DTO ===");
+        log.debug("Product ID: {}, Language: {}", product.getId(), lang);
+        log.debug("ProductParameters count: {}", product.getProductParameters().size());
 
         ProductResponseDTO dto = new ProductResponseDTO();
 
@@ -1284,20 +1280,20 @@ public class ProductService {
         dto.setWeight(product.getWeight());
 
         // ========== DETAILED LOGGING FOR SPECIFICATIONS ==========
-        log.info("--- PROCESSING SPECIFICATIONS ---");
+        log.debug("--- PROCESSING SPECIFICATIONS ---");
         Set<ProductParameter> productParams = product.getProductParameters();
-        log.info("Raw ProductParameter set size: {}", productParams.size());
+        log.debug("Raw ProductParameter set size: {}", productParams.size());
 
         // Log each ProductParameter before processing
         int counter = 1;
         for (ProductParameter pp : productParams) {
-            log.info("ProductParam {}: ID={}, Parameter={}, Option={}",
+            log.debug("ProductParam {}: ID={}, Parameter={}, Option={}",
                     counter++, pp.getId(),
                     pp.getParameter() != null ? pp.getParameter().getNameEn() : "NULL",
                     pp.getParameterOption() != null ? pp.getParameterOption().getNameEn() : "NULL");
 
             if (pp.getParameter() != null) {
-                log.info("  Parameter details: ID={}, ExternalID={}, NameEN={}, NameBG={}",
+                log.debug("  Parameter details: ID={}, ExternalID={}, NameEN={}, NameBG={}",
                         pp.getParameter().getId(),
                         pp.getParameter().getExternalId(),
                         pp.getParameter().getNameEn(),
@@ -1305,7 +1301,7 @@ public class ProductService {
             }
 
             if (pp.getParameterOption() != null) {
-                log.info("  Option details: ID={}, ExternalID={}, NameEN={}, NameBG={}",
+                log.debug("  Option details: ID={}, ExternalID={}, NameEN={}, NameBG={}",
                         pp.getParameterOption().getId(),
                         pp.getParameterOption().getExternalId(),
                         pp.getParameterOption().getNameEn(),
@@ -1324,14 +1320,14 @@ public class ProductService {
                 })
                 .toList();
 
-        log.info("Valid ProductParameters after filtering: {}", validParams.size());
+        log.debug("Valid ProductParameters after filtering: {}", validParams.size());
 
         // Process each parameter and log conversion
         Map<Long, ProductParameterResponseDto> uniqueSpecs = new HashMap<>();
 
         for (ProductParameter pp : validParams) {
             Long parameterId = pp.getParameter().getId();
-            log.info("Processing Parameter ID: {}, Name: {}", parameterId, pp.getParameter().getNameEn());
+            log.debug("Processing Parameter ID: {}, Name: {}", parameterId, pp.getParameter().getNameEn());
 
             // Convert to DTO
             ProductParameterResponseDto converted = convertToProductParameterResponse(pp, lang);
@@ -1341,7 +1337,7 @@ public class ProductService {
                 continue;
             }
 
-            log.info("Converted DTO: ParameterID={}, Name={}, Options count={}",
+            log.debug("Converted DTO: ParameterID={}, Name={}, Options count={}",
                     converted.getParameterId(), converted.getParameterNameEn(),
                     converted.getOptions() != null ? converted.getOptions().size() : 0);
 
@@ -1354,7 +1350,7 @@ public class ProductService {
                 combinedOptions.addAll(existing.getOptions());
                 combinedOptions.addAll(converted.getOptions());
 
-                log.info("Before merge - Existing options: {}, New options: {}",
+                log.debug("Before merge - Existing options: {}, New options: {}",
                         existing.getOptions().size(), converted.getOptions().size());
 
                 // Remove duplicate options by ID
@@ -1372,35 +1368,35 @@ public class ProductService {
                         .toList();
 
                 existing.setOptions(uniqueOptions);
-                log.info("After merge - Final options count: {}", uniqueOptions.size());
+                log.debug("After merge - Final options count: {}", uniqueOptions.size());
 
             } else {
-                log.info("Adding new Parameter ID: {} to unique specs", parameterId);
+                log.debug("Adding new Parameter ID: {} to unique specs", parameterId);
                 uniqueSpecs.put(parameterId, converted);
             }
         }
 
-        log.info("Final uniqueSpecs map size: {}", uniqueSpecs.size());
+        log.debug("Final uniqueSpecs map size: {}", uniqueSpecs.size());
 
         // Convert to list and set in DTO
         List<ProductParameterResponseDto> finalSpecs = new ArrayList<>(uniqueSpecs.values());
-        log.info("Final specifications list size: {}", finalSpecs.size());
+        log.debug("Final specifications list size: {}", finalSpecs.size());
 
         // Log final specifications
         for (ProductParameterResponseDto spec : finalSpecs) {
-            log.info("Final Spec: ParameterID={}, Name={}, Options={}",
+            log.debug("Final Spec: ParameterID={}, Name={}, Options={}",
                     spec.getParameterId(), spec.getParameterNameEn(),
                     spec.getOptions().size());
 
             for (ParameterOptionResponseDto option : spec.getOptions()) {
-                log.info("  Option: ID={}, Name={}", option.getId(), option.getName());
+                log.debug("  Option: ID={}, Name={}", option.getId(), option.getName());
             }
         }
 
         dto.setSpecifications(finalSpecs);
 
-        log.info("=== SPECIFICATIONS PROCESSING COMPLETE ===");
-        log.info("Final DTO specifications count: {}", dto.getSpecifications().size());
+        log.debug("=== SPECIFICATIONS PROCESSING COMPLETE ===");
+        log.debug("Final DTO specifications count: {}", dto.getSpecifications().size());
 
         if (product.getCategory() != null) {
             dto.setCategory(convertToCategorySummary(product.getCategory()));
@@ -1416,7 +1412,7 @@ public class ProductService {
         dto.setStatus(product.getStatus() != null ? product.getStatus().getCode() : 0);
         dto.setWorkflowId(product.getWorkflowId());
 
-        log.info("=== PRODUCT CONVERSION COMPLETE ===");
+        log.debug("=== PRODUCT CONVERSION COMPLETE ===");
         return dto;
     }
 

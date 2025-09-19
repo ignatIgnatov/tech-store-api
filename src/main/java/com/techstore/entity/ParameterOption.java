@@ -29,11 +29,11 @@ public class ParameterOption extends BaseEntity {
     private Parameter parameter;
 
     @FullTextField
-    @Column(name = "name_bg", nullable = false)
+    @Column(name = "name_bg")
     private String nameBg;
 
     @FullTextField
-    @Column(name = "name_en", nullable = false)
+    @Column(name = "name_en")
     private String nameEn;
 
     @Column(name = "sort_order")

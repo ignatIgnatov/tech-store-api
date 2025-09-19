@@ -21,20 +21,20 @@ services:
       retries: 3
 
   # Redis for Caching (Optional)
-  redis:
-    image: redis:7-alpine
-    container_name: techstore-redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    networks:
-      - techstore-network
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 3s
-      retries: 3
+#  redis:
+#    image: redis:7-alpine
+#    container_name: techstore-redis
+#    ports:
+#      - "6379:6379"
+#    volumes:
+#      - redis_data:/data
+#    networks:
+#      - techstore-network
+#    healthcheck:
+#      test: ["CMD", "redis-cli", "ping"]
+#      interval: 30s
+#      timeout: 3s
+#      retries: 3
 
   # Spring Boot Application
   app:

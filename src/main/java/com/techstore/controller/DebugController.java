@@ -1,5 +1,6 @@
 package com.techstore.controller;
 
+import com.techstore.dto.request.ProductRequestDto;
 import com.techstore.entity.Parameter;
 import com.techstore.entity.ParameterOption;
 import com.techstore.entity.Product;
@@ -9,6 +10,7 @@ import com.techstore.repository.ProductRepository;
 import com.techstore.service.ProductService;
 import com.techstore.service.SyncService;
 import com.techstore.service.ValiApiService;
+import io.swagger.v3.oas.annotations.Hidden;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -24,6 +26,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+@Hidden
 @Slf4j
 @RestController
 @RequestMapping("/debug")
@@ -148,11 +151,11 @@ public class DebugController {
 
             // Получи всички продукти за тази категория от Vali API
             log.info("Fetching products for category: {}", categoryExternalId);
-            List<com.techstore.dto.external.ProductRequestDto> allProducts =
+            List<ProductRequestDto> allProducts =
                     valiApiService.getProductsByCategory(categoryExternalId);
 
             // Намери нашия продукт
-            Optional<com.techstore.dto.external.ProductRequestDto> ourProduct = allProducts.stream()
+            Optional<ProductRequestDto> ourProduct = allProducts.stream()
                     .filter(p -> p.getId().equals(externalId))
                     .findFirst();
 
@@ -162,7 +165,7 @@ public class DebugController {
                 return ResponseEntity.notFound().build();
             }
 
-            com.techstore.dto.external.ProductRequestDto valiProduct = ourProduct.get();
+            ProductRequestDto valiProduct = ourProduct.get();
 
             log.info("Found product in Vali API: {}", valiProduct.getReferenceNumber());
             log.info("Parameters from Vali API: {}",

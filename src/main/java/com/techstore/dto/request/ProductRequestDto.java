@@ -1,7 +1,12 @@
-package com.techstore.dto.external;
+package com.techstore.dto.request;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.techstore.dto.request.ParameterValueRequestDto;
+import com.techstore.dto.external.CategoryIdDto;
+import com.techstore.dto.external.DescriptionDto;
+import com.techstore.dto.external.DocumentDto;
+import com.techstore.dto.external.FlagDto;
+import com.techstore.dto.external.ImageDto;
+import com.techstore.dto.external.NameDto;
 import lombok.Data;
 
 import java.math.BigDecimal;

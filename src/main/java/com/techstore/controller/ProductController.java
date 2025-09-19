@@ -224,7 +224,7 @@ public class ProductController {
                 productData.getReferenceNumber(),
                 1 + (additionalImages != null ? additionalImages.size() : 0));
 
-        ProductResponseDTO createdProduct = productService.createProductWithImages(
+        ProductResponseDTO createdProduct = productService.createProduct(
                 productData, primaryImage, additionalImages, language);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(createdProduct);

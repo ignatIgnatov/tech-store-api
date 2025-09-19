@@ -196,25 +196,9 @@ public class CategoryService {
             throw new ValidationException("External ID is required for category creation");
         }
 
-        if (requestDto.getName() == null || requestDto.getName().isEmpty()) {
+        if (requestDto.getNameBg() == null || requestDto.getNameEn().isEmpty()) {
             throw new ValidationException("Category name is required");
         }
-
-        // Validate name entries
-        boolean hasValidName = requestDto.getName().stream()
-                .anyMatch(name -> StringUtils.hasText(name.getText()));
-
-        if (!hasValidName) {
-            throw new ValidationException("At least one category name (EN or BG) must be provided");
-        }
-
-        // Validate name lengths
-        requestDto.getName().forEach(name -> {
-            if (StringUtils.hasText(name.getText()) && name.getText().length() > 200) {
-                throw new ValidationException(
-                        String.format("Category name (%s) cannot exceed 200 characters", name.getLanguageCode()));
-            }
-        });
 
         if (requestDto.getOrder() != null && requestDto.getOrder() < 0) {
             throw new ValidationException("Category order cannot be negative");
@@ -278,7 +262,8 @@ public class CategoryService {
         category.setSortOrder(requestDto.getOrder() != null ? requestDto.getOrder() : 0);
 
         // Set names
-        setNamesFromRequest(category, requestDto);
+        category.setNameBg(requestDto.getNameBg());
+        category.setNameEn(requestDto.getNameEn());
 
         // Generate slug if not provided
         if (StringUtils.hasText(requestDto.getSlug())) {
@@ -306,8 +291,12 @@ public class CategoryService {
             category.setSortOrder(requestDto.getOrder());
         }
 
-        if (requestDto.getName() != null) {
-            setNamesFromRequest(category, requestDto);
+        if (requestDto.getNameBg() != null) {
+            category.setNameBg(requestDto.getNameBg());
+        }
+
+        if (requestDto.getNameEn() != null) {
+            category.setNameEn(requestDto.getNameEn());
         }
 
         if (StringUtils.hasText(requestDto.getSlug())) {
@@ -321,18 +310,6 @@ public class CategoryService {
                 Category parent = findCategoryByExternalIdOrThrow(requestDto.getParent());
                 category.setParent(parent);
             }
-        }
-    }
-
-    private void setNamesFromRequest(Category category, CategoryRequestDto requestDto) {
-        if (requestDto.getName() != null) {
-            requestDto.getName().forEach(name -> {
-                if ("bg".equalsIgnoreCase(name.getLanguageCode())) {
-                    category.setNameBg(name.getText());
-                } else if ("en".equalsIgnoreCase(name.getLanguageCode())) {
-                    category.setNameEn(name.getText());
-                }
-            });
         }
     }
 

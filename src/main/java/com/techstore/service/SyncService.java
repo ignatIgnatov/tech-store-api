@@ -1,13 +1,12 @@
 package com.techstore.service;
 
 import com.techstore.dto.external.ImageDto;
-import com.techstore.dto.external.ProductRequestDto;
-import com.techstore.dto.request.CategoryRequestDto;
+import com.techstore.dto.request.CategoryRequestFromExternalDto;
 import com.techstore.dto.request.DocumentRequestDto;
 import com.techstore.dto.request.ManufacturerRequestDto;
 import com.techstore.dto.request.ParameterOptionRequestDto;
 import com.techstore.dto.request.ParameterRequestDto;
-import com.techstore.dto.request.ParameterValueRequestDto;
+import com.techstore.dto.request.ProductRequestDto;
 import com.techstore.entity.Category;
 import com.techstore.entity.Manufacturer;
 import com.techstore.entity.Parameter;
@@ -33,8 +32,6 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import javax.sql.DataSource;
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -61,8 +58,8 @@ public class SyncService {
     private final ParameterOptionRepository parameterOptionRepository;
     private final SyncLogRepository syncLogRepository;
     private final EntityManager entityManager;
-    private final DataSource dataSource;
     private final ProductDocumentRepository productDocumentRepository;
+    private final CachedLookupService cachedLookupService;
 
     @Value("#{'${excluded.categories.external-ids}'.split(',')}")
     private Set<Long> excludedCategories;
@@ -138,16 +135,14 @@ public class SyncService {
         try {
             log.info("Starting categories synchronization");
 
-            List<CategoryRequestDto> externalCategories = valiApiService.getCategories();
-            Map<Long, Category> existingCategories = categoryRepository.findAll()
-                    .stream()
-                    .collect(Collectors.toMap(Category::getExternalId, c -> c));
+            List<CategoryRequestFromExternalDto> externalCategories = valiApiService.getCategories();
+
+            Map<Long, Category> existingCategories = cachedLookupService.getAllCategoriesMap();
 
             long created = 0, updated = 0, skipped = 0;
 
-            for (CategoryRequestDto extCategory : externalCategories) {
+            for (CategoryRequestFromExternalDto extCategory : externalCategories) {
                 if (excludedCategories.contains(extCategory.getId())) {
-                    log.debug("Skipping excluded category with external ID: {}", extCategory.getId());
                     skipped++;
                     continue;
                 }
@@ -171,12 +166,8 @@ public class SyncService {
 
             updateSyncLogSimple(syncLog, LOG_STATUS_SUCCESS, externalCategories.size(), created, updated, 0,
                     skipped > 0 ? String.format("Skipped %d excluded categories", skipped) : null, startTime);
-            log.info("Categories synchronization completed - Created: {}, Updated: {}, Skipped: {}",
-                    created, updated, skipped);
-
         } catch (Exception e) {
             updateSyncLogSimple(syncLog, LOG_STATUS_FAILED, 0, 0, 0, 0, e.getMessage(), startTime);
-            log.error("Error during categories synchronization", e);
             throw e;
         }
     }
@@ -191,9 +182,7 @@ public class SyncService {
             log.info("Starting manufacturers synchronization");
 
             List<ManufacturerRequestDto> externalManufacturers = valiApiService.getManufacturers();
-            Map<Long, Manufacturer> existingManufacturers = manufacturerRepository.findAll()
-                    .stream()
-                    .collect(Collectors.toMap(Manufacturer::getExternalId, m -> m));
+            Map<Long, Manufacturer> existingManufacturers = cachedLookupService.getAllManufacturersMap();
 
             long created = 0, updated = 0;
 
@@ -202,9 +191,13 @@ public class SyncService {
 
                 if (manufacturer == null) {
                     manufacturer = createManufacturerFromExternal(extManufacturer);
+                    manufacturer = manufacturerRepository.save(manufacturer);
+                    existingManufacturers.put(manufacturer.getExternalId(), manufacturer);
                     created++;
                 } else {
                     updateManufacturerFromExternal(manufacturer, extManufacturer);
+                    manufacturer = manufacturerRepository.save(manufacturer);
+                    existingManufacturers.put(manufacturer.getExternalId(), manufacturer);
                     updated++;
                 }
 
@@ -235,14 +228,33 @@ public class SyncService {
 
             for (Category category : categories) {
                 try {
-                    ParameterSyncResult result = syncParametersByCategory(category);
-                    totalProcessed += result.processed;
-                    created += result.created;
-                    updated += result.updated;
-                    errors += result.errors;
+                    Map<Long, Parameter> existingParameters = cachedLookupService.getParametersByCategory(category);
 
-                    log.debug("Completed parameters for category {} - Processed: {}, Created: {}, Updated: {}, Errors: {}",
-                            category.getExternalId(), result.processed, result.created, result.updated, result.errors);
+                    List<ParameterRequestDto> externalParameters = valiApiService.getParametersByCategory(category.getExternalId());
+
+                    List<Parameter> toSave = new ArrayList<>();
+
+                    for (ParameterRequestDto extParam : externalParameters) {
+                        Parameter parameter = existingParameters.get(extParam.getId());
+                        if (parameter == null) {
+                            parameter = parameterRepository
+                                    .findByExternalIdAndCategoryId(extParam.getId(), category.getId())
+                                    .orElseGet(() -> createParameterFromExternal(extParam, category));
+                            created++;
+                        } else {
+                            updateParameterFromExternal(parameter, extParam);
+                            updated++;
+                        }
+
+                        toSave.add(parameter);
+                        existingParameters.put(parameter.getExternalId(), parameter); // Обновяване на кеша
+                    }
+
+                    if (!toSave.isEmpty()) {
+                        parameterRepository.saveAll(toSave);
+                    }
+
+                    totalProcessed += externalParameters.size();
 
                 } catch (Exception e) {
                     log.error("Error syncing parameters for category {}: {}", category.getExternalId(), e.getMessage());
@@ -252,99 +264,15 @@ public class SyncService {
 
             updateSyncLogSimple(syncLog, LOG_STATUS_SUCCESS, totalProcessed, created, updated, errors,
                     errors > 0 ? String.format("Completed with %d errors", errors) : null, startTime);
-            log.info("Parameters synchronization completed - Created: {}, Updated: {}, Errors: {}", created, updated, errors);
+
+            log.info("Parameters synchronization completed - Processed: {}, Created: {}, Updated: {}, Errors: {}",
+                    totalProcessed, created, updated, errors);
 
         } catch (Exception e) {
             updateSyncLogSimple(syncLog, LOG_STATUS_FAILED, 0, 0, 0, 0, e.getMessage(), startTime);
             log.error("Error during parameters synchronization", e);
             throw e;
         }
-    }
-
-    private ParameterSyncResult syncParametersByCategory(Category category) {
-        long totalProcessed = 0, created = 0, updated = 0, errors = 0;
-
-        try {
-            List<ParameterRequestDto> allParameters = valiApiService.getParametersByCategory(category.getExternalId());
-
-            if (allParameters.isEmpty()) {
-                return new ParameterSyncResult(0, 0, 0, 0);
-            }
-
-            List<List<ParameterRequestDto>> chunks = partitionList(allParameters, batchSize);
-            log.debug("Processing {} parameters in {} chunks for category {}",
-                    allParameters.size(), chunks.size(), category.getExternalId());
-
-            for (int i = 0; i < chunks.size(); i++) {
-                List<ParameterRequestDto> chunk = chunks.get(i);
-
-                try {
-                    ParameterChunkResult result = processParametersChunk(chunk, category);
-                    totalProcessed += result.processed;
-                    created += result.created;
-                    updated += result.updated;
-                    errors += result.errors;
-
-                    if (i < chunks.size() - 1) {
-                        Thread.sleep(100);
-                    }
-
-                } catch (Exception e) {
-                    log.error("Error processing parameter chunk {}/{} for category {}: {}",
-                            i + 1, chunks.size(), category.getExternalId(), e.getMessage());
-                    errors += chunk.size();
-                }
-            }
-
-        } catch (Exception e) {
-            log.error("Error getting parameters for category {}: {}", category.getExternalId(), e.getMessage());
-            errors++;
-        }
-
-        return new ParameterSyncResult(totalProcessed, created, updated, errors);
-    }
-
-    private ParameterChunkResult processParametersChunk(List<ParameterRequestDto> parameters, Category category) {
-        long processed = 0, created = 0, updated = 0, errors = 0;
-        long chunkStartTime = System.currentTimeMillis();
-
-        Map<Long, Parameter> existingParameters = parameterRepository
-                .findByCategoryIdOrderByOrderAsc(category.getId())
-                .stream()
-                .collect(Collectors.toMap(Parameter::getExternalId, p -> p));
-
-        for (ParameterRequestDto extParameter : parameters) {
-            try {
-                Parameter parameter = existingParameters.get(extParameter.getId());
-
-                if (parameter == null) {
-                    parameter = createParameterFromExternal(extParameter, category);
-                    parameter = parameterRepository.save(parameter);
-                    created++;
-                } else {
-                    updateParameterFromExternal(parameter, extParameter);
-                    parameter = parameterRepository.save(parameter);
-                    updated++;
-                }
-
-                syncParameterOptionsChunked(parameter, extParameter.getOptions());
-                processed++;
-
-                if ((System.currentTimeMillis() - chunkStartTime) > (maxChunkDurationMinutes * 60 * 1000)) {
-                    log.warn("Parameter chunk processing taking too long, will continue in next chunk");
-                    break;
-                }
-
-            } catch (Exception e) {
-                errors++;
-                log.error("Error processing parameter {}: {}", extParameter.getId(), e.getMessage());
-            }
-        }
-
-        entityManager.flush();
-        entityManager.clear();
-
-        return new ParameterChunkResult(processed, created, updated, errors);
     }
 
     // ============ PRODUCTS SYNC ============
@@ -892,34 +820,14 @@ public class SyncService {
         product.setPriceClientPromo(extProduct.getPriceClientPromo());
         product.setShow(extProduct.getShow());
         product.setWarranty(extProduct.getWarranty());
+        product.setWeight(extProduct.getWeight());
 
-        setWeightSafely(product, extProduct);
         setCategoryToProduct(product, extProduct);
         setImagesToProduct(product, extProduct);
         setNamesToProduct(product, extProduct);
         setDescriptionToProduct(product, extProduct);
         setParametersToProduct(product, extProduct);
         product.calculateFinalPrice();
-    }
-
-    private void setWeightSafely(Product product, ProductRequestDto extProduct) {
-        BigDecimal weight = extProduct.getWeight();
-
-        if (weight != null) {
-            if (weight.compareTo(BigDecimal.valueOf(9.99)) > 0) {
-                log.warn("Weight {} for product {} exceeds database precision, setting to 9.99",
-                        weight, extProduct.getId());
-                product.setWeight(BigDecimal.valueOf(9.99));
-            } else if (weight.compareTo(BigDecimal.valueOf(-9.99)) < 0) {
-                log.warn("Weight {} for product {} is below database precision, setting to -9.99",
-                        weight, extProduct.getId());
-                product.setWeight(BigDecimal.valueOf(-9.99));
-            } else {
-                product.setWeight(weight);
-            }
-        } else {
-            product.setWeight(null);
-        }
     }
 
     private void setCategoryToProduct(Product product, ProductRequestDto extProduct) {
@@ -977,120 +885,32 @@ public class SyncService {
     }
 
     private void setParametersToProduct(Product product, ProductRequestDto extProduct) {
-        log.info("=== DEBUG PRODUCT PARAMETERS ===");
-        log.info("Product External ID: {}, Category ID: {}", extProduct.getId(), product.getCategory().getId());
-
         if (extProduct.getParameters() != null && product.getCategory() != null) {
-            log.info("External parameters count: {}", extProduct.getParameters().size());
 
-            Set<ProductParameter> newProductParameters = new HashSet<>();
-
-            for (int i = 0; i < extProduct.getParameters().size(); i++) {
-                ParameterValueRequestDto paramValue = extProduct.getParameters().get(i);
-
-                log.info("--- Parameter {} ---", i + 1);
-                log.info("External Parameter ID: {}, External Option ID: {}",
-                        paramValue.getParameterId(), paramValue.getOptionId());
-
-                // Логиране на parameter names
-                if (paramValue.getParameterName() != null) {
-                    paramValue.getParameterName().forEach(name ->
-                            log.info("Parameter Name ({}): {}", name.getLanguageCode(), name.getText()));
-                }
-
-                // Логиране на option names
-                if (paramValue.getOptionName() != null) {
-                    paramValue.getOptionName().forEach(name ->
-                            log.info("Option Name ({}): {}", name.getLanguageCode(), name.getText()));
-                }
-
-                Optional<Parameter> parameterOpt = parameterRepository
-                        .findByExternalIdAndCategoryId(paramValue.getParameterId(), product.getCategory().getId());
-
-                if (parameterOpt.isPresent()) {
-                    Parameter parameter = parameterOpt.get();
-                    log.info("✓ Parameter found - Internal ID: {}, Name: {}",
-                            parameter.getId(), parameter.getNameEn());
-
-                    Optional<ParameterOption> optionOpt = parameterOptionRepository
-                            .findByExternalIdAndParameterId(paramValue.getOptionId(), parameter.getId());
-
-                    if (optionOpt.isPresent()) {
-                        ParameterOption option = optionOpt.get();
-                        log.info("✓ Option found - Internal ID: {}, Name: {}",
-                                option.getId(), option.getNameEn());
-
-                        ProductParameter pp = new ProductParameter();
-                        pp.setProduct(product);
-                        pp.setParameter(parameter);
-                        pp.setParameterOption(option);
-
-                        boolean added = newProductParameters.add(pp);
-                        log.info("ProductParameter added to set: {}", added);
-
-                        if (!added) {
-                            log.warn("ProductParameter NOT added - possible duplicate");
-                            // Логиране на съществуващ ProductParameter
-                            newProductParameters.forEach(existing -> {
-                                if (existing.getParameter().getId().equals(parameter.getId()) &&
-                                        existing.getParameterOption().getId().equals(option.getId())) {
-                                    log.warn("Duplicate found: Parameter ID: {}, Option ID: {}",
-                                            existing.getParameter().getId(), existing.getParameterOption().getId());
-                                }
-                            });
-                        }
-                    } else {
-                        log.error("✗ Parameter option NOT found - External OptionId: {} for Internal ParameterId: {} in ProductId: {}",
-                                paramValue.getOptionId(), parameter.getId(), extProduct.getId());
-
-                        // Проверка дали съществува с друг parameter ID
-                        List<ParameterOption> allOptionsForExternalId = parameterOptionRepository.findAll()
-                                .stream()
-                                .filter(opt -> opt.getExternalId().equals(paramValue.getOptionId()))
-                                .toList();
-
-                        if (!allOptionsForExternalId.isEmpty()) {
-                            log.error("But option exists with different parameter IDs:");
-                            allOptionsForExternalId.forEach(opt ->
-                                    log.error("  Option ID: {}, Parameter ID: {}, Parameter External ID: {}",
-                                            opt.getId(), opt.getParameter().getId(), opt.getParameter().getExternalId()));
-                        }
-                    }
-                } else {
-                    log.error("✗ Parameter NOT found - External ParameterId: {} for CategoryId: {} in ProductId: {}",
-                            paramValue.getParameterId(), product.getCategory().getId(), extProduct.getId());
-
-                    // Проверка дали съществува с друга категория
-                    Optional<Parameter> paramInOtherCategory = parameterRepository.findByExternalId(paramValue.getParameterId());
-                    if (paramInOtherCategory.isPresent()) {
-                        Parameter param = paramInOtherCategory.get();
-                        log.error("But parameter exists in category: {} (ID: {})",
-                                param.getCategory().getId(), param.getCategory().getExternalId());
-                    }
-                }
-
-                log.info("Current newProductParameters size: {}", newProductParameters.size());
-            }
-
-            log.info("=== FINAL RESULT ===");
-            log.info("Total ProductParameters to be set: {}", newProductParameters.size());
-
-            newProductParameters.forEach(pp -> {
-                log.info("Final PP: Parameter '{}' -> Option '{}'",
-                        pp.getParameter().getNameEn(), pp.getParameterOption().getNameEn());
-            });
+            Set<ProductParameter> newProductParameters = extProduct.getParameters().stream()
+                    .map(paramValue -> cachedLookupService
+                            .getParameter(paramValue.getParameterId(), product.getCategory().getId())
+                            .flatMap(parameter -> cachedLookupService
+                                    .getParameterOption(paramValue.getOptionId(), parameter.getId())
+                                    .map(option -> {
+                                        ProductParameter pp = new ProductParameter();
+                                        pp.setProduct(product);
+                                        pp.setParameter(parameter);
+                                        pp.setParameterOption(option);
+                                        return pp;
+                                    })
+                            )
+                    )
+                    .flatMap(Optional::stream)
+                    .collect(Collectors.toSet());
 
             product.setProductParameters(newProductParameters);
-            log.info("ProductParameters set on product");
 
         } else {
-            log.error("Parameters or category is null - Parameters: {}, Category: {}",
-                    extProduct.getParameters() != null, product.getCategory() != null);
             product.setProductParameters(new HashSet<>());
         }
-
-        log.info("=== END DEBUG PRODUCT PARAMETERS ===");
     }
+
 
     private String generateSlug(String name) {
         return name == null ? null :
@@ -1099,7 +919,7 @@ public class SyncService {
                         .replaceAll("^-|-$", "");
     }
 
-    private Category createCategoryFromExternal(CategoryRequestDto extCategory) {
+    private Category createCategoryFromExternal(CategoryRequestFromExternalDto extCategory) {
         Category category = new Category();
         category.setExternalId(extCategory.getId());
         category.setShow(extCategory.getShow());
@@ -1121,7 +941,7 @@ public class SyncService {
         return category;
     }
 
-    private void updateCategoryFromExternal(Category category, CategoryRequestDto extCategory) {
+    private void updateCategoryFromExternal(Category category, CategoryRequestFromExternalDto extCategory) {
         category.setShow(extCategory.getShow());
         category.setSortOrder(extCategory.getOrder());
 
@@ -1141,8 +961,8 @@ public class SyncService {
         }
     }
 
-    private void updateCategoryParents(List<CategoryRequestDto> externalCategories, Map<Long, Category> existingCategories) {
-        for (CategoryRequestDto extCategory : externalCategories) {
+    private void updateCategoryParents(List<CategoryRequestFromExternalDto> externalCategories, Map<Long, Category> existingCategories) {
+        for (CategoryRequestFromExternalDto extCategory : externalCategories) {
             if (extCategory.getParent() != null && extCategory.getParent() != 0) {
                 Category category = existingCategories.get(extCategory.getId());
                 Category parent = existingCategories.get(extCategory.getParent());
@@ -1255,5 +1075,91 @@ public class SyncService {
                 }
             });
         }
+    }
+
+    private ParameterSyncResult syncParametersByCategory(Category category) {
+        long totalProcessed = 0, created = 0, updated = 0, errors = 0;
+
+        try {
+            List<ParameterRequestDto> allParameters = valiApiService.getParametersByCategory(category.getExternalId());
+
+            if (allParameters.isEmpty()) {
+                return new ParameterSyncResult(0, 0, 0, 0);
+            }
+
+            List<List<ParameterRequestDto>> chunks = partitionList(allParameters, batchSize);
+            log.debug("Processing {} parameters in {} chunks for category {}",
+                    allParameters.size(), chunks.size(), category.getExternalId());
+
+            for (int i = 0; i < chunks.size(); i++) {
+                List<ParameterRequestDto> chunk = chunks.get(i);
+
+                try {
+                    ParameterChunkResult result = processParametersChunk(chunk, category);
+                    totalProcessed += result.processed;
+                    created += result.created;
+                    updated += result.updated;
+                    errors += result.errors;
+
+                    if (i < chunks.size() - 1) {
+                        Thread.sleep(100);
+                    }
+
+                } catch (Exception e) {
+                    log.error("Error processing parameter chunk {}/{} for category {}: {}",
+                            i + 1, chunks.size(), category.getExternalId(), e.getMessage());
+                    errors += chunk.size();
+                }
+            }
+
+        } catch (Exception e) {
+            log.error("Error getting parameters for category {}: {}", category.getExternalId(), e.getMessage());
+            errors++;
+        }
+
+        return new ParameterSyncResult(totalProcessed, created, updated, errors);
+    }
+
+    private ParameterChunkResult processParametersChunk(List<ParameterRequestDto> parameters, Category category) {
+        long processed = 0, created = 0, updated = 0, errors = 0;
+        long chunkStartTime = System.currentTimeMillis();
+
+        Map<Long, Parameter> existingParameters = parameterRepository
+                .findByCategoryIdOrderByOrderAsc(category.getId())
+                .stream()
+                .collect(Collectors.toMap(Parameter::getExternalId, p -> p));
+
+        for (ParameterRequestDto extParameter : parameters) {
+            try {
+                Parameter parameter = existingParameters.get(extParameter.getId());
+
+                if (parameter == null) {
+                    parameter = createParameterFromExternal(extParameter, category);
+                    parameter = parameterRepository.save(parameter);
+                    created++;
+                } else {
+                    updateParameterFromExternal(parameter, extParameter);
+                    parameter = parameterRepository.save(parameter);
+                    updated++;
+                }
+
+                syncParameterOptionsChunked(parameter, extParameter.getOptions());
+                processed++;
+
+                if ((System.currentTimeMillis() - chunkStartTime) > (maxChunkDurationMinutes * 60 * 1000)) {
+                    log.warn("Parameter chunk processing taking too long, will continue in next chunk");
+                    break;
+                }
+
+            } catch (Exception e) {
+                errors++;
+                log.error("Error processing parameter {}: {}", extParameter.getId(), e.getMessage());
+            }
+        }
+
+        entityManager.flush();
+        entityManager.clear();
+
+        return new ParameterChunkResult(processed, created, updated, errors);
     }
 }

@@ -110,7 +110,6 @@ public class Product extends BaseEntity {
     @Column(name = "additional_urls", length = 1000)
     private List<String> additionalImages = new ArrayList<>();
 
-    @Column(precision = 3, scale = 2)
     private BigDecimal weight;
 
     @ManyToOne(fetch = FetchType.LAZY)

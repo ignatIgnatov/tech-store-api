@@ -1,10 +1,10 @@
 package com.techstore.service;
 
-import com.techstore.dto.request.CategoryRequestDto;
+import com.techstore.dto.request.CategoryRequestFromExternalDto;
 import com.techstore.dto.request.DocumentRequestDto;
 import com.techstore.dto.request.ManufacturerRequestDto;
 import com.techstore.dto.request.ParameterRequestDto;
-import com.techstore.dto.external.ProductRequestDto;
+import com.techstore.dto.request.ProductRequestDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -45,7 +45,7 @@ public class ValiApiService {
     @Value("${vali.api.retry-delay}")
     private long retryDelay;
 
-    public List<CategoryRequestDto> getCategories() {
+    public List<CategoryRequestFromExternalDto> getCategories() {
         log.debug("Fetching categories from external API");
 
         return webClient.get()
@@ -53,7 +53,7 @@ public class ValiApiService {
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiToken)
                 .header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
                 .retrieve()
-                .bodyToMono(new ParameterizedTypeReference<List<CategoryRequestDto>>() {
+                .bodyToMono(new ParameterizedTypeReference<List<CategoryRequestFromExternalDto>>() {
                 })
                 .timeout(Duration.ofMillis(timeout))
                 .retryWhen(Retry.backoff(retryAttempts, Duration.ofMillis(retryDelay)))

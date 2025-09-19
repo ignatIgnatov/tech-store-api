@@ -21,11 +21,11 @@ import java.util.List;
 @EqualsAndHashCode(callSuper = false, exclude = {"parent", "children", "products"})
 public class Category extends BaseEntity {
 
-    @Column(name = "external_id", unique = true, nullable = false)
+    @Column(name = "external_id", unique = true)
     private Long externalId;
 
     @FullTextField
-    @Column(name = "name_en", nullable = false, length = 200)
+    @Column(name = "name_en")
     private String nameEn;
 
     @FullTextField

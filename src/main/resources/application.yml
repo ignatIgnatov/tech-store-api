@@ -92,7 +92,7 @@ logging:
         org.springframework.security.config.annotation.authentication.configuration.InitializeUserDetailsBeanManagerConfigurer: ERROR
         org.springframework.security.web.FilterChainProxy: WARN
         org.hibernate.type.descriptor.sql.BasicBinder: ERROR
-        com.techstore: DEBUG
+#        com.techstore: DEBUG
     pattern:
         console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
         file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
@@ -172,6 +172,6 @@ vali:
 
 excluded:
     categories:
-        external-ids: 621,594,648,664,663,715,558,590,638,646,644,696,647,574,628,547,533,596,556,582,588,592,649
+        external-ids: 528,538,552,622,665,667,650,651,621,594,648,664,663,715,558,590,638,646,644,696,647,574,628,547,533,596,556,582,588,592,649
 
 

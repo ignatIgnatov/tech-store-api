@@ -16,6 +16,8 @@ public interface ParameterRepository extends JpaRepository<Parameter, Long> {
 
     Optional<Parameter> findByExternalId(Long externalId);
 
+    List<Parameter> findAllByCategoryId(Long categoryId);
+
     boolean existsByNameBgIgnoreCaseAndCategory(String nameBg, Category category);
     boolean existsByNameEnIgnoreCaseAndCategory(String nameEn, Category category);
 

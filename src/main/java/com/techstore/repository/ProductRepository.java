@@ -121,4 +121,6 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     @Query("SELECT COUNT(p) FROM Product p WHERE p.show = true AND p.status != 'NOT_AVAILABLE'")
     Long countAvailableProducts();
+
+    List<Product> findAllByCategoryId(Long categoryId);
 }

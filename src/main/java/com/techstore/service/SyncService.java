@@ -408,8 +408,6 @@ public class SyncService {
             }
 
             List<List<ProductRequestDto>> chunks = partitionList(allProducts, batchSize);
-            log.debug("Processing {} products in {} chunks for category {}",
-                    allProducts.size(), chunks.size(), category.getExternalId());
 
             for (int i = 0; i < chunks.size(); i++) {
                 List<ProductRequestDto> chunk = chunks.get(i);
@@ -779,7 +777,6 @@ public class SyncService {
 
         try {
             productRepository.save(product);
-            log.debug("Created product with externalId: {}", extProduct.getId());
         } catch (Exception e) {
             log.error("Failed to create product with externalId {}: {}",
                     extProduct.getId(), e.getMessage());
@@ -799,7 +796,6 @@ public class SyncService {
 
         try {
             productRepository.save(product);
-            log.debug("Updated product with externalId: {}", extProduct.getId());
         } catch (Exception e) {
             log.error("Failed to update product with externalId {}: {}", extProduct.getId(), e.getMessage());
             throw e;

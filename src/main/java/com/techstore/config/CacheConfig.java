@@ -16,22 +16,18 @@ public class CacheConfig {
     @Bean
     public CacheManager cacheManager() {
         CaffeineCacheManager cacheManager = new CaffeineCacheManager(
-                "parametersByCategory",
-                "optionsByParameter",
-                "categoriesByExternalId",
-                "manufacturersByExternalId",
-                "parameters",
-                "productsByCategory",
-                "parameterOptions"
+                "manufacturers",           // ManufacturerService - getAllManufacturers()
+                "parameters",             // ParameterService - getParametersByCategory()
+                "products"               // ProductService - getAllProducts()
         );
+
         cacheManager.setCaffeine(
                 Caffeine.newBuilder()
                         .expireAfterWrite(Duration.ofHours(1))
-                        .maximumSize(10_000)
+                        .maximumSize(5_000)
                         .recordStats()
         );
+
         return cacheManager;
     }
-
-
 }

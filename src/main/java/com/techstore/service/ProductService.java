@@ -1263,18 +1263,21 @@ public class ProductService {
         dto.setFeatured(product.getFeatured());
         dto.setShow(product.getShow());
 
-        // Set proxy image URLs
-        if (product.getPrimaryImageUrl() != null) {
-            dto.setPrimaryImageUrl("/api/images/product/" + product.getId() + "/primary");
-        }
+        dto.setPrimaryImageUrl(product.getPrimaryImageUrl());
+        dto.setAdditionalImages(product.getAdditionalImages());
 
-        if (product.getAdditionalImages() != null && !product.getAdditionalImages().isEmpty()) {
-            List<String> proxyAdditionalUrls = new ArrayList<>();
-            for (int i = 0; i < product.getAdditionalImages().size(); i++) {
-                proxyAdditionalUrls.add("/api/images/product/" + product.getId() + "/additional/" + i);
-            }
-            dto.setAdditionalImages(proxyAdditionalUrls);
-        }
+        // Set proxy image URLs
+//        if (product.getPrimaryImageUrl() != null) {
+//            dto.setPrimaryImageUrl("/api/images/product/" + product.getId() + "/primary");
+//        }
+//
+//        if (product.getAdditionalImages() != null && !product.getAdditionalImages().isEmpty()) {
+//            List<String> proxyAdditionalUrls = new ArrayList<>();
+//            for (int i = 0; i < product.getAdditionalImages().size(); i++) {
+//                proxyAdditionalUrls.add("/api/images/product/" + product.getId() + "/additional/" + i);
+//            }
+//            dto.setAdditionalImages(proxyAdditionalUrls);
+//        }
 
         dto.setWarranty(product.getWarranty());
         dto.setWeight(product.getWeight());

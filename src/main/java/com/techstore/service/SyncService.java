@@ -59,7 +59,6 @@ public class SyncService {
     private final SyncLogRepository syncLogRepository;
     private final EntityManager entityManager;
     private final ProductDocumentRepository productDocumentRepository;
-    private final CachedLookupService cachedLookupService;
 
     @Value("#{'${excluded.categories.external-ids}'.split(',')}")
     private Set<Long> excludedCategories;
@@ -103,29 +102,6 @@ public class SyncService {
         }
     }
 
-    // ============ MONITORING ============
-//    @Scheduled(fixedRate = 300000) // Every 5 minutes
-//    public void monitorSyncHealth() {
-//        try {
-//            List<SyncLog> stuckSyncs = syncLogRepository.findByStatusAndCreatedAtBefore(
-//                    LOG_STATUS_IN_PROGRESS, LocalDateTime.now().minusHours(2));
-//
-//            if (!stuckSyncs.isEmpty()) {
-//                log.warn("Found {} stuck sync processes", stuckSyncs.size());
-//                stuckSyncs.forEach(sync -> {
-//                    sync.setStatus(LOG_STATUS_FAILED);
-//                    sync.setErrorMessage("Stuck - marked as failed by monitor");
-//                    syncLogRepository.save(sync);
-//                });
-//            }
-//
-//            monitorConnectionPool();
-//
-//        } catch (Exception e) {
-//            log.error("Error during sync health check", e);
-//        }
-//    }
-
     // ============ CATEGORIES SYNC ============
     @Transactional
     public void syncCategories() {
@@ -137,7 +113,10 @@ public class SyncService {
 
             List<CategoryRequestFromExternalDto> externalCategories = valiApiService.getCategories();
 
-            Map<Long, Category> existingCategories = cachedLookupService.getAllCategoriesMap();
+            // Използвай директно repository вместо кеш
+            Map<Long, Category> existingCategories = categoryRepository.findAll()
+                    .stream()
+                    .collect(Collectors.toMap(Category::getExternalId, c -> c));
 
             long created = 0, updated = 0, skipped = 0;
 
@@ -182,7 +161,11 @@ public class SyncService {
             log.info("Starting manufacturers synchronization");
 
             List<ManufacturerRequestDto> externalManufacturers = valiApiService.getManufacturers();
-            Map<Long, Manufacturer> existingManufacturers = cachedLookupService.getAllManufacturersMap();
+
+            // Използвай директно repository вместо кеш
+            Map<Long, Manufacturer> existingManufacturers = manufacturerRepository.findAll()
+                    .stream()
+                    .collect(Collectors.toMap(Manufacturer::getExternalId, m -> m));
 
             long created = 0, updated = 0;
 
@@ -200,8 +183,6 @@ public class SyncService {
                     existingManufacturers.put(manufacturer.getExternalId(), manufacturer);
                     updated++;
                 }
-
-                manufacturerRepository.save(manufacturer);
             }
 
             updateSyncLogSimple(syncLog, LOG_STATUS_SUCCESS, (long) externalManufacturers.size(), created, updated, 0, null, startTime);
@@ -228,7 +209,10 @@ public class SyncService {
 
             for (Category category : categories) {
                 try {
-                    Map<Long, Parameter> existingParameters = cachedLookupService.getParametersByCategory(category);
+                    Map<Long, Parameter> existingParameters = parameterRepository
+                            .findByCategoryIdOrderByOrderAsc(category.getId())
+                            .stream()
+                            .collect(Collectors.toMap(Parameter::getExternalId, p -> p));
 
                     List<ParameterRequestDto> externalParameters = valiApiService.getParametersByCategory(category.getExternalId());
 
@@ -237,9 +221,7 @@ public class SyncService {
                     for (ParameterRequestDto extParam : externalParameters) {
                         Parameter parameter = existingParameters.get(extParam.getId());
                         if (parameter == null) {
-                            parameter = parameterRepository
-                                    .findByExternalIdAndCategoryId(extParam.getId(), category.getId())
-                                    .orElseGet(() -> createParameterFromExternal(extParam, category));
+                            parameter = createParameterFromExternal(extParam, category);
                             created++;
                         } else {
                             updateParameterFromExternal(parameter, extParam);
@@ -247,11 +229,18 @@ public class SyncService {
                         }
 
                         toSave.add(parameter);
-                        existingParameters.put(parameter.getExternalId(), parameter); // Обновяване на кеша
+                        existingParameters.put(parameter.getExternalId(), parameter);
                     }
 
                     if (!toSave.isEmpty()) {
                         parameterRepository.saveAll(toSave);
+                    }
+
+                    for (ParameterRequestDto extParam : externalParameters) {
+                        Parameter parameter = existingParameters.get(extParam.getId());
+                        if (parameter != null) {
+                            syncParameterOptionsDirectly(parameter, extParam.getOptions());
+                        }
                     }
 
                     totalProcessed += externalParameters.size();
@@ -489,48 +478,13 @@ public class SyncService {
         return chunks;
     }
 
-    private SyncLog createSyncLogSimple(String syncType) {
-        try {
-            SyncLog syncLog = new SyncLog();
-            syncLog.setSyncType(syncType);
-            syncLog.setStatus(LOG_STATUS_IN_PROGRESS);
-            return syncLogRepository.save(syncLog);
-        } catch (Exception e) {
-            log.error("Failed to create sync log: {}", e.getMessage());
-            SyncLog dummyLog = new SyncLog();
-            dummyLog.setId(-1L);
-            dummyLog.setSyncType(syncType);
-            return dummyLog;
-        }
-    }
-
-    private void updateSyncLogSimple(SyncLog syncLog, String status, long processed,
-                                     long created, long updated, long errors,
-                                     String errorMessage, long startTime) {
-        try {
-            if (syncLog.getId() != null && syncLog.getId() > 0) {
-                syncLog.setStatus(status);
-                syncLog.setRecordsProcessed(processed);
-                syncLog.setRecordsCreated(created);
-                syncLog.setRecordsUpdated(updated);
-                syncLog.setDurationMs(System.currentTimeMillis() - startTime);
-
-                if (errorMessage != null) {
-                    syncLog.setErrorMessage(errorMessage);
-                }
-
-                syncLogRepository.save(syncLog);
-            }
-        } catch (Exception e) {
-            log.error("Failed to update sync log: {}", e.getMessage());
-        }
-    }
-
-    private void syncParameterOptionsChunked(Parameter parameter, List<ParameterOptionRequestDto> allOptions) {
+    // ПРЕРАБОТЕН МЕТОД - използвай директно repository вместо кеш
+    private void syncParameterOptionsDirectly(Parameter parameter, List<ParameterOptionRequestDto> allOptions) {
         if (allOptions == null || allOptions.isEmpty()) {
             return;
         }
 
+        // Използвай директно repository
         Map<Long, ParameterOption> existingOptions = parameterOptionRepository
                 .findByParameterIdOrderByOrderAsc(parameter.getId())
                 .stream()
@@ -546,6 +500,8 @@ public class SyncService {
                     if (option == null) {
                         option = createParameterOptionFromExternal(extOption, parameter);
                         parameterOptionRepository.save(option);
+                        // Добави в локалната карта за следващите итерации в същия chunk
+                        existingOptions.put(option.getExternalId(), option);
                     } else {
                         updateParameterOptionFromExternal(option, extOption);
                         parameterOptionRepository.save(option);
@@ -557,24 +513,55 @@ public class SyncService {
         }
     }
 
-//    private void monitorConnectionPool() {
-//        try {
-//            if (dataSource instanceof HikariDataSource) {
-//                HikariDataSource ds = (HikariDataSource) dataSource;
-//                int active = ds.getHikariPoolMXBean().getActiveConnections();
-//                int total = ds.getHikariPoolMXBean().getTotalConnections();
-//                int idle = ds.getHikariPoolMXBean().getIdleConnections();
-//
-//                log.debug("Connection Pool Status - Active: {}, Idle: {}, Total: {}", active, idle, total);
-//
-//                if (active > (total * 0.8)) {
-//                    log.warn("Connection pool usage high: {}/{} ({}%)", active, total, (active * 100 / total));
-//                }
-//            }
-//        } catch (Exception e) {
-//            log.debug("Could not retrieve connection pool stats: {}", e.getMessage());
-//        }
-//    }
+    // ПРЕРАБОТЕН МЕТОД - използвай директно repository
+    private void setParametersToProduct(Product product, ProductRequestDto extProduct) {
+        if (extProduct.getParameters() != null && product.getCategory() != null) {
+
+            // Използвай директно repository-та вместо кеширан service
+            Set<ProductParameter> newProductParameters = extProduct.getParameters().stream()
+                    .map(paramValue -> {
+                        // Намери параметъра директно от database
+                        Optional<Parameter> parameterOpt = parameterRepository
+                                .findByExternalIdAndCategoryId(paramValue.getParameterId(), product.getCategory().getId());
+
+                        if (parameterOpt.isPresent()) {
+                            Parameter parameter = parameterOpt.get();
+
+                            // Намери опцията директно от database
+                            Optional<ParameterOption> optionOpt = parameterOptionRepository
+                                    .findByExternalIdAndParameterId(paramValue.getOptionId(), parameter.getId());
+
+                            if (optionOpt.isPresent()) {
+                                ParameterOption option = optionOpt.get();
+
+                                ProductParameter pp = new ProductParameter();
+                                pp.setProduct(product);
+                                pp.setParameter(parameter);
+                                pp.setParameterOption(option);
+                                return pp;
+                            } else {
+                                log.warn("Parameter option not found: externalId={}, parameterId={}",
+                                        paramValue.getOptionId(), parameter.getId());
+                                return null;
+                            }
+                        } else {
+                            log.warn("Parameter not found: externalId={}, categoryId={}",
+                                    paramValue.getParameterId(), product.getCategory().getId());
+                            return null;
+                        }
+                    })
+                    .filter(pp -> pp != null)  // Филтрирай null стойностите
+                    .collect(Collectors.toSet());
+
+            log.debug("Setting {} parameters for product {}",
+                    newProductParameters.size(), product.getExternalId());
+
+            product.setProductParameters(newProductParameters);
+
+        } else {
+            product.setProductParameters(new HashSet<>());
+        }
+    }
 
     private DocumentChunkResult processDocumentsChunk(List<DocumentRequestDto> documents) {
         long processed = 0, created = 0, updated = 0, errors = 0;
@@ -742,25 +729,41 @@ public class SyncService {
         }
     }
 
-    private static class ParameterSyncResult {
-        long processed, created, updated, errors;
-
-        ParameterSyncResult(long processed, long created, long updated, long errors) {
-            this.processed = processed;
-            this.created = created;
-            this.updated = updated;
-            this.errors = errors;
+    // ============ SYNC LOG METHODS ============
+    private SyncLog createSyncLogSimple(String syncType) {
+        try {
+            SyncLog syncLog = new SyncLog();
+            syncLog.setSyncType(syncType);
+            syncLog.setStatus(LOG_STATUS_IN_PROGRESS);
+            return syncLogRepository.save(syncLog);
+        } catch (Exception e) {
+            log.error("Failed to create sync log: {}", e.getMessage());
+            SyncLog dummyLog = new SyncLog();
+            dummyLog.setId(-1L);
+            dummyLog.setSyncType(syncType);
+            return dummyLog;
         }
     }
 
-    private static class ParameterChunkResult {
-        long processed, created, updated, errors;
+    private void updateSyncLogSimple(SyncLog syncLog, String status, long processed,
+                                     long created, long updated, long errors,
+                                     String errorMessage, long startTime) {
+        try {
+            if (syncLog.getId() != null && syncLog.getId() > 0) {
+                syncLog.setStatus(status);
+                syncLog.setRecordsProcessed(processed);
+                syncLog.setRecordsCreated(created);
+                syncLog.setRecordsUpdated(updated);
+                syncLog.setDurationMs(System.currentTimeMillis() - startTime);
 
-        ParameterChunkResult(long processed, long created, long updated, long errors) {
-            this.processed = processed;
-            this.created = created;
-            this.updated = updated;
-            this.errors = errors;
+                if (errorMessage != null) {
+                    syncLog.setErrorMessage(errorMessage);
+                }
+
+                syncLogRepository.save(syncLog);
+            }
+        } catch (Exception e) {
+            log.error("Failed to update sync log: {}", e.getMessage());
         }
     }
 
@@ -826,7 +829,7 @@ public class SyncService {
         setImagesToProduct(product, extProduct);
         setNamesToProduct(product, extProduct);
         setDescriptionToProduct(product, extProduct);
-        setParametersToProduct(product, extProduct);
+        setParametersToProduct(product, extProduct);  // ПРЕРАБОТЕН МЕТОД
         product.calculateFinalPrice();
     }
 
@@ -883,34 +886,6 @@ public class SyncService {
             });
         }
     }
-
-    private void setParametersToProduct(Product product, ProductRequestDto extProduct) {
-        if (extProduct.getParameters() != null && product.getCategory() != null) {
-
-            Set<ProductParameter> newProductParameters = extProduct.getParameters().stream()
-                    .map(paramValue -> cachedLookupService
-                            .getParameter(paramValue.getParameterId(), product.getCategory().getId())
-                            .flatMap(parameter -> cachedLookupService
-                                    .getParameterOption(paramValue.getOptionId(), parameter.getId())
-                                    .map(option -> {
-                                        ProductParameter pp = new ProductParameter();
-                                        pp.setProduct(product);
-                                        pp.setParameter(parameter);
-                                        pp.setParameterOption(option);
-                                        return pp;
-                                    })
-                            )
-                    )
-                    .flatMap(Optional::stream)
-                    .collect(Collectors.toSet());
-
-            product.setProductParameters(newProductParameters);
-
-        } else {
-            product.setProductParameters(new HashSet<>());
-        }
-    }
-
 
     private String generateSlug(String name) {
         return name == null ? null :
@@ -1075,91 +1050,5 @@ public class SyncService {
                 }
             });
         }
-    }
-
-    private ParameterSyncResult syncParametersByCategory(Category category) {
-        long totalProcessed = 0, created = 0, updated = 0, errors = 0;
-
-        try {
-            List<ParameterRequestDto> allParameters = valiApiService.getParametersByCategory(category.getExternalId());
-
-            if (allParameters.isEmpty()) {
-                return new ParameterSyncResult(0, 0, 0, 0);
-            }
-
-            List<List<ParameterRequestDto>> chunks = partitionList(allParameters, batchSize);
-            log.debug("Processing {} parameters in {} chunks for category {}",
-                    allParameters.size(), chunks.size(), category.getExternalId());
-
-            for (int i = 0; i < chunks.size(); i++) {
-                List<ParameterRequestDto> chunk = chunks.get(i);
-
-                try {
-                    ParameterChunkResult result = processParametersChunk(chunk, category);
-                    totalProcessed += result.processed;
-                    created += result.created;
-                    updated += result.updated;
-                    errors += result.errors;
-
-                    if (i < chunks.size() - 1) {
-                        Thread.sleep(100);
-                    }
-
-                } catch (Exception e) {
-                    log.error("Error processing parameter chunk {}/{} for category {}: {}",
-                            i + 1, chunks.size(), category.getExternalId(), e.getMessage());
-                    errors += chunk.size();
-                }
-            }
-
-        } catch (Exception e) {
-            log.error("Error getting parameters for category {}: {}", category.getExternalId(), e.getMessage());
-            errors++;
-        }
-
-        return new ParameterSyncResult(totalProcessed, created, updated, errors);
-    }
-
-    private ParameterChunkResult processParametersChunk(List<ParameterRequestDto> parameters, Category category) {
-        long processed = 0, created = 0, updated = 0, errors = 0;
-        long chunkStartTime = System.currentTimeMillis();
-
-        Map<Long, Parameter> existingParameters = parameterRepository
-                .findByCategoryIdOrderByOrderAsc(category.getId())
-                .stream()
-                .collect(Collectors.toMap(Parameter::getExternalId, p -> p));
-
-        for (ParameterRequestDto extParameter : parameters) {
-            try {
-                Parameter parameter = existingParameters.get(extParameter.getId());
-
-                if (parameter == null) {
-                    parameter = createParameterFromExternal(extParameter, category);
-                    parameter = parameterRepository.save(parameter);
-                    created++;
-                } else {
-                    updateParameterFromExternal(parameter, extParameter);
-                    parameter = parameterRepository.save(parameter);
-                    updated++;
-                }
-
-                syncParameterOptionsChunked(parameter, extParameter.getOptions());
-                processed++;
-
-                if ((System.currentTimeMillis() - chunkStartTime) > (maxChunkDurationMinutes * 60 * 1000)) {
-                    log.warn("Parameter chunk processing taking too long, will continue in next chunk");
-                    break;
-                }
-
-            } catch (Exception e) {
-                errors++;
-                log.error("Error processing parameter {}: {}", extParameter.getId(), e.getMessage());
-            }
-        }
-
-        entityManager.flush();
-        entityManager.clear();
-
-        return new ParameterChunkResult(processed, created, updated, errors);
     }
 }

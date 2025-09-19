@@ -9,6 +9,7 @@ import com.techstore.repository.ProductRepository;
 import com.techstore.service.ProductService;
 import com.techstore.service.SyncService;
 import com.techstore.service.ValiApiService;
+import io.swagger.v3.oas.annotations.Hidden;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -24,6 +25,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+@Hidden
 @Slf4j
 @RestController
 @RequestMapping("/debug")
@@ -36,10 +38,6 @@ public class DebugController {
     private final ParameterOptionRepository parameterOptionRepository;
     private final ProductService productService;
     private final ValiApiService valiApiService;
-
-    // Добави този метод в DebugController.java
-
-    // Добави този метод в DebugController.java
 
     @PostMapping("/sync-single-product/{externalId}")
     public ResponseEntity<Map<String, Object>> debugSyncSingleProduct(@PathVariable Long externalId) {

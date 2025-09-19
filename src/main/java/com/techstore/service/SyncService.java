@@ -60,6 +60,7 @@ public class SyncService {
     private final EntityManager entityManager;
     private final ProductDocumentRepository productDocumentRepository;
     private final CachedLookupService cachedLookupService;
+    private final SyncService syncSelfService;
 
     @Value("#{'${excluded.categories.external-ids}'.split(',')}")
     private Set<Long> excludedCategories;
@@ -83,48 +84,25 @@ public class SyncService {
 
         log.info("Starting scheduled synchronization at {}", LocalDateTime.now());
         try {
-            syncCategories();
+            syncSelfService.syncCategories();
             log.info("Scheduled category synchronization completed at {}", LocalDateTime.now());
 
-            syncManufacturers();
+            syncSelfService.syncManufacturers();
             log.info("Scheduled manufacturers synchronization completed at {}", LocalDateTime.now());
 
-            syncParameters();
+            syncSelfService.syncParameters();
             log.info("Scheduled parameters synchronization completed at {}", LocalDateTime.now());
 
-            syncProducts();
+            syncSelfService.syncProducts();
             log.info("Scheduled products synchronization completed at {}", LocalDateTime.now());
 
-            syncDocuments();
+            syncSelfService.syncDocuments();
             log.info("Scheduled documents synchronization completed at {}", LocalDateTime.now());
 
         } catch (Exception e) {
             log.error("CRITICAL: Scheduled synchronization failed", e);
         }
     }
-
-    // ============ MONITORING ============
-//    @Scheduled(fixedRate = 300000) // Every 5 minutes
-//    public void monitorSyncHealth() {
-//        try {
-//            List<SyncLog> stuckSyncs = syncLogRepository.findByStatusAndCreatedAtBefore(
-//                    LOG_STATUS_IN_PROGRESS, LocalDateTime.now().minusHours(2));
-//
-//            if (!stuckSyncs.isEmpty()) {
-//                log.warn("Found {} stuck sync processes", stuckSyncs.size());
-//                stuckSyncs.forEach(sync -> {
-//                    sync.setStatus(LOG_STATUS_FAILED);
-//                    sync.setErrorMessage("Stuck - marked as failed by monitor");
-//                    syncLogRepository.save(sync);
-//                });
-//            }
-//
-//            monitorConnectionPool();
-//
-//        } catch (Exception e) {
-//            log.error("Error during sync health check", e);
-//        }
-//    }
 
     // ============ CATEGORIES SYNC ============
     @Transactional
@@ -295,10 +273,6 @@ public class SyncService {
                     created += result.created;
                     updated += result.updated;
                     errors += result.errors;
-
-                    log.debug("Completed products for category {} - Processed: {}, Created: {}, Updated: {}, Errors: {}",
-                            category.getExternalId(), result.processed, result.created, result.updated, result.errors);
-
                 } catch (Exception e) {
                     log.error("Error processing products for category {}: {}", category.getExternalId(), e.getMessage());
                     errors++;
@@ -1071,49 +1045,6 @@ public class SyncService {
                 }
             });
         }
-    }
-
-    private ParameterSyncResult syncParametersByCategory(Category category) {
-        long totalProcessed = 0, created = 0, updated = 0, errors = 0;
-
-        try {
-            List<ParameterRequestDto> allParameters = valiApiService.getParametersByCategory(category.getExternalId());
-
-            if (allParameters.isEmpty()) {
-                return new ParameterSyncResult(0, 0, 0, 0);
-            }
-
-            List<List<ParameterRequestDto>> chunks = partitionList(allParameters, batchSize);
-            log.debug("Processing {} parameters in {} chunks for category {}",
-                    allParameters.size(), chunks.size(), category.getExternalId());
-
-            for (int i = 0; i < chunks.size(); i++) {
-                List<ParameterRequestDto> chunk = chunks.get(i);
-
-                try {
-                    ParameterChunkResult result = processParametersChunk(chunk, category);
-                    totalProcessed += result.processed;
-                    created += result.created;
-                    updated += result.updated;
-                    errors += result.errors;
-
-                    if (i < chunks.size() - 1) {
-                        Thread.sleep(100);
-                    }
-
-                } catch (Exception e) {
-                    log.error("Error processing parameter chunk {}/{} for category {}: {}",
-                            i + 1, chunks.size(), category.getExternalId(), e.getMessage());
-                    errors += chunk.size();
-                }
-            }
-
-        } catch (Exception e) {
-            log.error("Error getting parameters for category {}: {}", category.getExternalId(), e.getMessage());
-            errors++;
-        }
-
-        return new ParameterSyncResult(totalProcessed, created, updated, errors);
     }
 
     private ParameterChunkResult processParametersChunk(List<ParameterRequestDto> parameters, Category category) {

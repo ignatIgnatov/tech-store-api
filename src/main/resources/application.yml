@@ -117,6 +117,26 @@ app:
         batch-size: 30       # Chunks от 30 записа
         max-chunk-duration-minutes: 5
 
+        tekra:
+            enabled: true
+            wildlife-surveillance-only: true
+            auto-sync: false # Set to true to include in scheduled sync
+            sync-cron: "0 30 3 * * ?" # Run Tekra sync at 3:30 AM if auto-sync is enabled
+
+    cache:
+        names:
+            - parametersByCategory
+            - optionsByParameter
+            - categoriesByExternalId
+            - manufacturersByExternalId
+            - parameters
+            - productsByCategory
+            - parameterOptions
+            - tekraProducts # New cache for Tekra products
+            - tekraCategories # New cache for Tekra categories
+        caffeine:
+            spec: maximumSize=10000,expireAfterWrite=1h,recordStats
+
     markup:
         default-percentage: 20.0
         max-percentage: 200.0
@@ -170,8 +190,18 @@ vali:
         retry-attempts: 3
         retry-delay: 1000
 
+tekra:
+    api:
+        base-url: https://tekra.bg/shop/api
+        access-token: ZWZiOTU1OGE2ODcxMDgxMDAzNmVjMzIwMGYzMGI5MTdiZTYxNGM5MGFkZTA0MmQxZDZlNDI0NjJlMjA4MTkzMmUwYzFjZThhYTc1YTI3N2Q5ZmNiOTJlNjJmYjc1YzkxMjE0NzRkZjBkODBkNTg3ZWEwYTFlMmEzNzdhMjA0NDBXZHNvY0VuKy80elRHT2dyK2xsMzJOTTdEeC9hbTA4S1VzVWJ3WnNxWUc4PQ%253D%253D
+        timeout: 30000
+        retry-attempts: 3
+        retry-delay: 2000
+
 excluded:
     categories:
         external-ids: 528,538,552,622,665,667,650,651,621,594,648,664,663,715,558,590,638,646,644,696,647,574,628,547,533,596,556,582,588,592,649
+
+
 
 

@@ -6,10 +6,15 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/admin")
@@ -119,6 +124,124 @@ public class AdminController {
         } catch (Exception e) {
             log.error("Error during manual full synchronization", e);
             return ResponseEntity.internalServerError().body("Error during synchronization: " + e.getMessage());
+        }
+    }
+
+    // Add these methods to your existing AdminController class
+
+    /**
+     * Get Wildlife Surveillance products count from Tekra
+     */
+    @Hidden
+    @GetMapping("/tekra/wildlife-count")
+    public ResponseEntity<Map<String, Object>> getWildlifeSurveillanceCount() {
+        try {
+            int count = syncService.getTekraVideoSurveillanceProductsCount();
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("count", count);
+            response.put("message", String.format("Found %d Wildlife Surveillance products in Tekra", count));
+            response.put("timestamp", LocalDateTime.now());
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error getting Wildlife Surveillance count", e);
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("error", "Failed to get count: " + e.getMessage()));
+        }
+    }
+
+    @Hidden
+    @PostMapping("/sync/tekra/wildlife-surveillance")
+    public ResponseEntity<String> syncWildlifeSurveillance() {
+        try {
+            syncService.syncVideoSurveillanceOnly();
+            return ResponseEntity.ok("Wildlife Surveillance synchronization from Tekra completed successfully");
+        } catch (Exception e) {
+            log.error("Error during Wildlife Surveillance synchronization from Tekra", e);
+            return ResponseEntity.internalServerError()
+                    .body("Error during synchronization: " + e.getMessage());
+        }
+    }
+
+    @Hidden
+    @PostMapping("/sync/tekra/manufacturers")
+    public ResponseEntity<String> syncTekraManufacturers() {
+        try {
+            syncService.syncTekraManufacturers();
+            return ResponseEntity.ok("Tekra manufacturers synchronization completed successfully");
+        } catch (Exception e) {
+            log.error("Error during Tekra manufacturers synchronization", e);
+            return ResponseEntity.internalServerError()
+                    .body("Error during synchronization: " + e.getMessage());
+        }
+    }
+
+    @Hidden
+    @PostMapping("/sync/tekra/categories")
+    public ResponseEntity<String> syncTekraCategories() {
+        try {
+            syncService.syncTekraCategories();
+            return ResponseEntity.ok("Tekra categories synchronization completed successfully");
+        } catch (Exception e) {
+            log.error("Error during Tekra categories synchronization", e);
+            return ResponseEntity.internalServerError()
+                    .body("Error during synchronization: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Sync only Tekra parameters
+     */
+    @Hidden
+    @PostMapping("/sync/tekra/parameters")
+    public ResponseEntity<String> syncTekraParameters() {
+        try {
+            syncService.syncTekraParameters();
+            return ResponseEntity.ok("Tekra parameters synchronization completed successfully");
+        } catch (Exception e) {
+            log.error("Error during Tekra parameters synchronization", e);
+            return ResponseEntity.internalServerError()
+                    .body("Error during synchronization: " + e.getMessage());
+        }
+    }
+
+    @Hidden
+    @PostMapping("/sync/tekra/products")
+    public ResponseEntity<String> syncTekraProducts() {
+        try {
+            syncService.syncTekraProducts();
+            return ResponseEntity.ok("Tekra products synchronization completed successfully");
+        } catch (Exception e) {
+            log.error("Error during Tekra products synchronization", e);
+            return ResponseEntity.internalServerError()
+                    .body("Error during synchronization: " + e.getMessage());
+        }
+    }
+
+    @Hidden
+    @PostMapping("/sync/tekra/full")
+    public ResponseEntity<Map<String, Object>> fullTekraSync() {
+        Map<String, Object> result = new HashMap<>();
+
+        try {
+
+            int productCount = syncService.getTekraVideoSurveillanceProductsCount();
+            result.put("productsToSync", productCount);
+
+            syncService.syncVideoSurveillanceOnly();
+
+            result.put("success", true);
+            result.put("message", String.format("Successfully synced %d Video Surveillance products from Tekra", productCount));
+            result.put("timestamp", LocalDateTime.now());
+
+            return ResponseEntity.ok(result);
+
+        } catch (Exception e) {
+            log.error("Full Tekra sync failed", e);
+            result.put("success", false);
+            result.put("message", "Sync failed: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(result);
         }
     }
 }

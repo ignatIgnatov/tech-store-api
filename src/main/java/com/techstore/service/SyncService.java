@@ -7,6 +7,9 @@ import com.techstore.dto.request.ManufacturerRequestDto;
 import com.techstore.dto.request.ParameterOptionRequestDto;
 import com.techstore.dto.request.ParameterRequestDto;
 import com.techstore.dto.request.ProductRequestDto;
+import com.techstore.dto.tekra.TekraCategory;
+import com.techstore.dto.tekra.TekraParameter;
+import com.techstore.dto.tekra.TekraProduct;
 import com.techstore.entity.Category;
 import com.techstore.entity.Manufacturer;
 import com.techstore.entity.Parameter;
@@ -17,6 +20,7 @@ import com.techstore.entity.ProductParameter;
 import com.techstore.entity.SyncLog;
 import com.techstore.enums.ProductStatus;
 import com.techstore.exception.ResourceNotFoundException;
+import com.techstore.mapper.TekraMapper;
 import com.techstore.repository.CategoryRepository;
 import com.techstore.repository.ManufacturerRepository;
 import com.techstore.repository.ParameterOptionRepository;
@@ -28,11 +32,9 @@ import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -60,7 +62,9 @@ public class SyncService {
     private final EntityManager entityManager;
     private final ProductDocumentRepository productDocumentRepository;
     private final CachedLookupService cachedLookupService;
-    private final SyncService syncSelfService;
+    private final TekraApiService tekraApiService;
+    private final TekraMapper tekraMapper;
+//    private final SyncService selfSyncService;
 
     @Value("#{'${excluded.categories.external-ids}'.split(',')}")
     private Set<Long> excludedCategories;
@@ -74,35 +78,47 @@ public class SyncService {
     @Value("${app.sync.max-chunk-duration-minutes:5}")
     private int maxChunkDurationMinutes;
 
+    @Value("${app.sync.tekra.enabled:false}")
+    private boolean tekraSyncEnabled;
+
+    @Value("${app.sync.tekra.auto-sync:false}")
+    private boolean tekraAutoSync;
+
     // ============ SCHEDULED SYNC ============
-    @Scheduled(cron = "${app.sync.cron}")
-    public void scheduledSync() {
-        if (!syncEnabled) {
-            log.info("Synchronization is disabled");
-            return;
-        }
-
-        log.info("Starting scheduled synchronization at {}", LocalDateTime.now());
-        try {
-            syncSelfService.syncCategories();
-            log.info("Scheduled category synchronization completed at {}", LocalDateTime.now());
-
-            syncSelfService.syncManufacturers();
-            log.info("Scheduled manufacturers synchronization completed at {}", LocalDateTime.now());
-
-            syncSelfService.syncParameters();
-            log.info("Scheduled parameters synchronization completed at {}", LocalDateTime.now());
-
-            syncSelfService.syncProducts();
-            log.info("Scheduled products synchronization completed at {}", LocalDateTime.now());
-
-            syncSelfService.syncDocuments();
-            log.info("Scheduled documents synchronization completed at {}", LocalDateTime.now());
-
-        } catch (Exception e) {
-            log.error("CRITICAL: Scheduled synchronization failed", e);
-        }
-    }
+//    @Scheduled(cron = "${app.sync.cron}")
+//    public void scheduledSync() {
+//        if (!syncEnabled) {
+//            log.info("Synchronization is disabled");
+//            return;
+//        }
+//
+//        log.info("Starting scheduled synchronization at {}", LocalDateTime.now());
+//        try {
+//            selfSyncService.syncCategories();
+//            log.info("Scheduled category synchronization completed at {}", LocalDateTime.now());
+//
+//            selfSyncService.syncManufacturers();
+//            log.info("Scheduled manufacturers synchronization completed at {}", LocalDateTime.now());
+//
+//            selfSyncService.syncParameters();
+//            log.info("Scheduled parameters synchronization completed at {}", LocalDateTime.now());
+//
+//            selfSyncService.syncProducts();
+//            log.info("Scheduled products synchronization completed at {}", LocalDateTime.now());
+//
+//            selfSyncService.syncDocuments();
+//            log.info("Scheduled documents synchronization completed at {}", LocalDateTime.now());
+//
+//            if (tekraSyncEnabled && tekraAutoSync) {
+//                log.info("Starting scheduled Tekra Wildlife Surveillance sync");
+//                selfSyncService.syncTekraWildlifeSurveillance();
+//                log.info("Scheduled Tekra sync completed at {}", LocalDateTime.now());
+//            }
+//
+//        } catch (Exception e) {
+//            log.error("CRITICAL: Scheduled synchronization failed", e);
+//        }
+//    }
 
     // ============ CATEGORIES SYNC ============
     @Transactional
@@ -691,6 +707,206 @@ public class SyncService {
         }
     }
 
+    @Transactional
+    public void syncTekraWildlifeSurveillance() {
+        SyncLog syncLog = createSyncLogSimple("TEKRA_VIDEO_SURVEILLANCE");
+        long startTime = System.currentTimeMillis();
+
+        try {
+            log.info("Starting Tekra Video Surveillance synchronization");
+
+            syncTekraManufacturers();
+            syncTekraCategories();
+            syncTekraParameters();
+
+            TekraSyncResult result = syncTekraProducts();
+
+            updateSyncLogSimple(syncLog, LOG_STATUS_SUCCESS, result.processed,
+                    result.created, result.updated, result.errors,
+                    result.errors > 0 ? String.format("Completed with %d errors", result.errors) : null,
+                    startTime);
+
+            log.info("Tekra Video Surveillance synchronization completed - Created: {}, Updated: {}, Errors: {}",
+                    result.created, result.updated, result.errors);
+
+        } catch (Exception e) {
+            updateSyncLogSimple(syncLog, LOG_STATUS_FAILED, 0, 0, 0, 0, e.getMessage(), startTime);
+            log.error("Error during Tekra Video Surveillance synchronization", e);
+            throw e;
+        }
+    }
+
+    @Transactional
+    public void syncTekraManufacturers() {
+        log.info("Syncing Tekra manufacturers");
+
+        try {
+            List<TekraProduct> wildlifeProducts = tekraApiService.getWildlifeSurveillanceProducts();
+            List<ManufacturerRequestDto> manufacturers = tekraMapper.mapManufacturers(wildlifeProducts);
+
+            Map<Long, Manufacturer> existingManufacturers = cachedLookupService.getAllManufacturersMap();
+
+            long created = 0, updated = 0;
+
+            for (ManufacturerRequestDto extManufacturer : manufacturers) {
+                Manufacturer manufacturer = existingManufacturers.get(extManufacturer.getId());
+
+                if (manufacturer == null) {
+                    manufacturer = createManufacturerFromExternal(extManufacturer);
+                    manufacturer = manufacturerRepository.save(manufacturer);
+                    existingManufacturers.put(manufacturer.getExternalId(), manufacturer);
+                    created++;
+                } else {
+                    updateManufacturerFromExternal(manufacturer, extManufacturer);
+                    manufacturerRepository.save(manufacturer);
+                    updated++;
+                }
+            }
+
+            log.info("Tekra manufacturers sync completed - Created: {}, Updated: {}", created, updated);
+
+        } catch (Exception e) {
+            log.error("Error syncing Tekra manufacturers: {}", e.getMessage(), e);
+            throw e;
+        }
+    }
+
+    @Transactional
+    public void syncTekraCategories() {
+        log.info("Syncing Tekra categories");
+
+        try {
+            List<TekraCategory> tekraCategories = tekraApiService.getCategories();
+            List<CategoryRequestFromExternalDto> categories = tekraMapper.mapCategories(tekraCategories);
+
+            Map<Long, Category> existingCategories = cachedLookupService.getAllCategoriesMap();
+
+            long created = 0, updated = 0;
+
+            for (CategoryRequestFromExternalDto extCategory : categories) {
+                Category category = existingCategories.get(extCategory.getId());
+
+                if (category == null) {
+                    category = createCategoryFromExternal(extCategory);
+                    category = categoryRepository.save(category);
+                    existingCategories.put(category.getExternalId(), category);
+                    created++;
+                } else {
+                    updateCategoryFromExternal(category, extCategory);
+                    categoryRepository.save(category);
+                    updated++;
+                }
+            }
+
+            updateCategoryParents(categories, existingCategories);
+
+            log.info("Tekra categories sync completed - Created: {}, Updated: {}", created, updated);
+
+        } catch (Exception e) {
+            log.error("Error syncing Tekra categories: {}", e.getMessage(), e);
+            throw e;
+        }
+    }
+
+    @Transactional
+    public void syncTekraParameters() {
+        log.info("Syncing Tekra parameters");
+
+        try {
+            List<TekraParameter> tekraParameters = tekraApiService.getWildlifeSurveillanceParameters();
+            List<ParameterRequestDto> parameters = tekraMapper.mapParameters(tekraParameters);
+
+            Category wildlifeCategory = categoryRepository.findByExternalId(1000L)
+                    .orElseThrow(() -> new RuntimeException("Video Surveillance category not found"));
+
+            Map<Long, Parameter> existingParameters = cachedLookupService.getParametersByCategory(wildlifeCategory);
+
+            long created = 0, updated = 0;
+
+            for (ParameterRequestDto extParameter : parameters) {
+                Parameter parameter = existingParameters.get(extParameter.getId());
+
+                if (parameter == null) {
+                    parameter = createParameterFromExternal(extParameter, wildlifeCategory);
+                    parameter = parameterRepository.save(parameter);
+                    existingParameters.put(parameter.getExternalId(), parameter);
+                    created++;
+                } else {
+                    updateParameterFromExternal(parameter, extParameter);
+                    parameter = parameterRepository.save(parameter);
+                    updated++;
+                }
+
+                syncParameterOptionsChunked(parameter, extParameter.getOptions());
+            }
+
+            log.info("Tekra parameters sync completed - Created: {}, Updated: {}", created, updated);
+
+        } catch (Exception e) {
+            log.error("Error syncing Tekra parameters: {}", e.getMessage(), e);
+            throw e;
+        }
+    }
+
+    @Transactional
+    public TekraSyncResult syncTekraProducts() {
+        log.info("Syncing Tekra Video Surveillance products");
+
+        long processed = 0, created = 0, updated = 0, errors = 0;
+
+        try {
+            List<TekraProduct> wildlifeProducts = tekraApiService.getWildlifeSurveillanceProducts();
+            List<ProductRequestDto> products = tekraMapper.mapProducts(wildlifeProducts);
+
+            Map<Long, Manufacturer> manufacturersMap = manufacturerRepository.findAll()
+                    .stream()
+                    .collect(Collectors.toMap(Manufacturer::getExternalId, m -> m));
+
+            List<List<ProductRequestDto>> chunks = partitionList(products, batchSize);
+
+            for (List<ProductRequestDto> chunk : chunks) {
+                try {
+                    ChunkResult result = processProductsChunk(chunk, manufacturersMap);
+                    processed += result.processed;
+                    created += result.created;
+                    updated += result.updated;
+                    errors += result.errors;
+
+                    Thread.sleep(200);
+
+                } catch (Exception e) {
+                    log.error("Error processing Tekra product chunk: {}", e.getMessage());
+                    errors += chunk.size();
+                }
+            }
+
+            log.info("Tekra products sync completed - Processed: {}, Created: {}, Updated: {}, Errors: {}",
+                    processed, created, updated, errors);
+
+            return new TekraSyncResult(processed, created, updated, errors);
+
+        } catch (Exception e) {
+            log.error("Error syncing Tekra products: {}", e.getMessage(), e);
+            throw e;
+        }
+    }
+
+    public void syncVideoSurveillanceOnly() {
+        log.info("Starting manual Video Surveillance sync from Tekra");
+        syncTekraWildlifeSurveillance();
+        log.info("Manual Video Surveillance sync completed");
+    }
+
+    public int getTekraVideoSurveillanceProductsCount() {
+        try {
+            List<TekraProduct> products = tekraApiService.getWildlifeSurveillanceProducts();
+            return products.size();
+        } catch (Exception e) {
+            log.error("Error getting Video Surveillance products count: {}", e.getMessage());
+            return 0;
+        }
+    }
+
     // ============ RESULT CLASSES ============
     private static class ChunkResult {
         long processed, created, updated, errors;
@@ -714,21 +930,10 @@ public class SyncService {
         }
     }
 
-    private static class ParameterSyncResult {
+    private static class TekraSyncResult {
         long processed, created, updated, errors;
 
-        ParameterSyncResult(long processed, long created, long updated, long errors) {
-            this.processed = processed;
-            this.created = created;
-            this.updated = updated;
-            this.errors = errors;
-        }
-    }
-
-    private static class ParameterChunkResult {
-        long processed, created, updated, errors;
-
-        ParameterChunkResult(long processed, long created, long updated, long errors) {
+        TekraSyncResult(long processed, long created, long updated, long errors) {
             this.processed = processed;
             this.created = created;
             this.updated = updated;
@@ -1045,48 +1250,5 @@ public class SyncService {
                 }
             });
         }
-    }
-
-    private ParameterChunkResult processParametersChunk(List<ParameterRequestDto> parameters, Category category) {
-        long processed = 0, created = 0, updated = 0, errors = 0;
-        long chunkStartTime = System.currentTimeMillis();
-
-        Map<Long, Parameter> existingParameters = parameterRepository
-                .findByCategoryIdOrderByOrderAsc(category.getId())
-                .stream()
-                .collect(Collectors.toMap(Parameter::getExternalId, p -> p));
-
-        for (ParameterRequestDto extParameter : parameters) {
-            try {
-                Parameter parameter = existingParameters.get(extParameter.getId());
-
-                if (parameter == null) {
-                    parameter = createParameterFromExternal(extParameter, category);
-                    parameter = parameterRepository.save(parameter);
-                    created++;
-                } else {
-                    updateParameterFromExternal(parameter, extParameter);
-                    parameter = parameterRepository.save(parameter);
-                    updated++;
-                }
-
-                syncParameterOptionsChunked(parameter, extParameter.getOptions());
-                processed++;
-
-                if ((System.currentTimeMillis() - chunkStartTime) > (maxChunkDurationMinutes * 60 * 1000)) {
-                    log.warn("Parameter chunk processing taking too long, will continue in next chunk");
-                    break;
-                }
-
-            } catch (Exception e) {
-                errors++;
-                log.error("Error processing parameter {}: {}", extParameter.getId(), e.getMessage());
-            }
-        }
-
-        entityManager.flush();
-        entityManager.clear();
-
-        return new ParameterChunkResult(processed, created, updated, errors);
     }
 }

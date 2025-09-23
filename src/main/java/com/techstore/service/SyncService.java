@@ -1175,13 +1175,30 @@ public class SyncService {
 
     private void setTekraParametersToProduct(Product product, Map<String, Object> rawData) {
         if (product.getCategory() == null) {
-            log.warn("Product has no category, cannot set parameters");
+            log.warn("Product {} has no category, cannot set parameters", product.getSku());
             return;
         }
 
         try {
             Set<ProductParameter> productParameters = new HashSet<>();
-            Map<String, Parameter> categoryParameters = cachedLookupService.getParametersByCategory(product.getCategory());
+
+            // FIX 1: Use direct database lookup instead of cached service
+            List<Parameter> categoryParameters = parameterRepository.findByCategoryId(product.getCategory().getId());
+
+            log.debug("Found {} parameters for category {}", categoryParameters.size(), product.getCategory().getNameBg());
+
+            if (categoryParameters.isEmpty()) {
+                log.warn("No parameters found for category {}. Run parameter sync first.", product.getCategory().getNameBg());
+                return;
+            }
+
+            // Create lookup map by tekraKey
+            Map<String, Parameter> parameterLookup = categoryParameters.stream()
+                    .collect(Collectors.toMap(
+                            p -> p.getTekraKey() != null ? p.getTekraKey() : p.getNameBg(),
+                            p -> p,
+                            (existing, duplicate) -> existing // Handle duplicates
+                    ));
 
             // Process all prop_* fields as parameters
             for (Map.Entry<String, Object> entry : rawData.entrySet()) {
@@ -1193,18 +1210,28 @@ public class SyncService {
                     String parameterValue = value.toString().trim();
 
                     if (!parameterValue.isEmpty()) {
-                        Parameter parameter = categoryParameters.get(parameterKey);
+                        Parameter parameter = parameterLookup.get(parameterKey);
 
                         if (parameter != null) {
-                            // Find parameter option
-                            parameterOptionRepository.findByParameterAndNameBg(parameter, parameterValue)
-                                    .ifPresent(option -> {
-                                        ProductParameter pp = new ProductParameter();
-                                        pp.setProduct(product);
-                                        pp.setParameter(parameter);
-                                        pp.setParameterOption(option);
-                                        productParameters.add(pp);
-                                    });
+                            // FIX 2: More flexible parameter option lookup
+                            ParameterOption option = findParameterOption(parameter, parameterValue);
+
+                            if (option != null) {
+                                ProductParameter pp = new ProductParameter();
+                                pp.setProduct(product);
+                                pp.setParameter(parameter);
+                                pp.setParameterOption(option);
+                                productParameters.add(pp);
+
+                                log.debug("Mapped parameter: {} = {} for product {}",
+                                        parameter.getNameBg(), option.getNameBg(), product.getSku());
+                            } else {
+                                log.warn("Parameter option not found: {} = {} for parameter {}",
+                                        parameterKey, parameterValue, parameter.getNameBg());
+                            }
+                        } else {
+                            log.debug("Parameter not found for key: {} (available: {})",
+                                    parameterKey, parameterLookup.keySet());
                         }
                     }
                 }
@@ -1212,18 +1239,56 @@ public class SyncService {
 
             product.setProductParameters(productParameters);
 
-            log.debug("Set {} parameters for product {}", productParameters.size(), product.getSku());
+            log.info("Set {} parameters for product {}", productParameters.size(), product.getSku());
 
         } catch (Exception e) {
-            log.error("Error setting Tekra parameters to product {}: {}", product.getSku(), e.getMessage());
+            log.error("Error setting Tekra parameters to product {}: {}", product.getSku(), e.getMessage(), e);
         }
     }
 
-// ============ COMPLETE TEKRA SYNC WITH PARAMETERS ============
+    // FIX 3: Better parameter option lookup
+    private ParameterOption findParameterOption(Parameter parameter, String value) {
+        try {
+            // Try exact match first
+            Optional<ParameterOption> option = parameterOptionRepository.findByParameterAndNameBg(parameter, value);
 
+            if (option.isPresent()) {
+                return option.get();
+            }
+
+            // Try case-insensitive match
+            List<ParameterOption> allOptions = parameterOptionRepository.findByParameterIdOrderByOrderAsc(parameter.getId());
+
+            for (ParameterOption opt : allOptions) {
+                if (value.equalsIgnoreCase(opt.getNameBg()) || value.equalsIgnoreCase(opt.getNameEn())) {
+                    return opt;
+                }
+            }
+
+            // If option doesn't exist, create it
+            ParameterOption newOption = new ParameterOption();
+            newOption.setParameter(parameter);
+            newOption.setNameBg(value);
+            newOption.setNameEn(value);
+            newOption.setOrder(allOptions.size()); // Add at end
+
+            newOption = parameterOptionRepository.save(newOption);
+            log.info("Created new parameter option: {} = {} for parameter {}",
+                    parameter.getNameBg(), value, parameter.getNameBg());
+
+            return newOption;
+
+        } catch (Exception e) {
+            log.error("Error finding/creating parameter option for {} = {}: {}",
+                    parameter.getNameBg(), value, e.getMessage());
+            return null;
+        }
+    }
+
+    // FIX 4: Updated complete sync with proper order
     @Transactional
     public TekraSyncResult syncTekraComplete() {
-        log.info("Starting complete Tekra synchronization (categories + manufacturers + parameters + products)");
+        log.info("Starting complete Tekra synchronization with proper order");
         long totalProcessed = 0, totalCreated = 0, totalUpdated = 0, totalErrors = 0;
 
         try {
@@ -1243,7 +1308,7 @@ public class SyncService {
             totalUpdated += manufacturersResult.updated;
             totalErrors += manufacturersResult.errors;
 
-            // Step 3: Sync parameters
+            // Step 3: Sync parameters (CRITICAL - must be before products)
             log.info("Step 3: Syncing parameters...");
             TekraSyncResult parametersResult = syncTekraParameters();
             totalProcessed += parametersResult.processed;
@@ -1251,9 +1316,14 @@ public class SyncService {
             totalUpdated += parametersResult.updated;
             totalErrors += parametersResult.errors;
 
-            // Step 4: Sync products with parameters
-            log.info("Step 4: Syncing products with parameters...");
-            TekraSyncResult productsResult = syncTekraProductsWithParameters();
+            // Step 4: Clear parameter cache after parameters sync
+            log.info("Step 4: Clearing parameter cache...");
+            // If you have cache clearing methods, call them here
+            // cacheManager.getCache("parametersByCategory").clear();
+
+            // Step 5: Sync products with parameters (products will now find the parameters)
+            log.info("Step 5: Syncing products with parameters...");
+            TekraSyncResult productsResult = syncTekraProductsWithParametersFixed();
             totalProcessed += productsResult.processed;
             totalCreated += productsResult.created;
             totalUpdated += productsResult.updated;
@@ -1268,6 +1338,71 @@ public class SyncService {
             log.error("Error during complete Tekra synchronization", e);
             throw e;
         }
+    }
+
+    private TekraSyncResult syncTekraProductsWithParametersFixed() {
+        long totalProcessed = 0, totalCreated = 0, totalUpdated = 0, totalErrors = 0;
+
+        try {
+            String testCategory = "videonablyudenie";
+            List<Map<String, Object>> rawProducts = tekraApiService.getProductsRaw(testCategory);
+
+            log.info("Processing {} products with parameter mapping", rawProducts.size());
+
+            for (Map<String, Object> rawProduct : rawProducts) {
+                try {
+                    String sku = getStringValue(rawProduct, "sku");
+                    if (sku == null) continue;
+
+                    Optional<Product> existingProduct = productRepository.findBySku(sku);
+
+                    if (existingProduct.isPresent()) {
+                        Product product = existingProduct.get();
+
+                        // Update basic fields
+                        updateProductFieldsFromTekraXML(product, rawProduct, testCategory);
+
+                        // Set parameters (using fixed method)
+                        setTekraParametersToProduct(product, rawProduct);
+
+                        productRepository.save(product);
+                        totalUpdated++;
+                    } else {
+                        Product newProduct = new Product();
+                        updateProductFieldsFromTekraXML(newProduct, rawProduct, testCategory);
+
+                        // Save first to get ID
+                        newProduct = productRepository.save(newProduct);
+
+                        // Then set parameters
+                        setTekraParametersToProduct(newProduct, rawProduct);
+
+                        productRepository.save(newProduct);
+                        totalCreated++;
+                    }
+
+                    totalProcessed++;
+
+                    // Log progress
+                    if (totalProcessed % 10 == 0) {
+                        log.info("Processed {} products so far", totalProcessed);
+                    }
+
+                } catch (Exception e) {
+                    totalErrors++;
+                    log.error("Error processing product with parameters: {}", e.getMessage());
+                }
+            }
+
+            log.info("Products with parameters sync completed - Processed: {}, Created: {}, Updated: {}, Errors: {}",
+                    totalProcessed, totalCreated, totalUpdated, totalErrors);
+
+        } catch (Exception e) {
+            log.error("Error syncing products with parameters", e);
+            totalErrors++;
+        }
+
+        return new TekraSyncResult(totalProcessed, totalCreated, totalUpdated, totalErrors);
     }
 
     private TekraSyncResult syncTekraProductsWithParameters() {

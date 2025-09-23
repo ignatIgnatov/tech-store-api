@@ -40,4 +40,6 @@ public interface ParameterRepository extends JpaRepository<Parameter, Long> {
                                                              @Param("parameterId") Long parameterId);
 
     Optional<Parameter> findByCategoryAndNameBg(Category category, String nameBg);
+
+    List<Parameter> findByCategoryId(Long categoryId);
 }

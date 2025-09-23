@@ -1,6 +1,5 @@
 package com.techstore.controller;
 
-import com.techstore.dto.tekra.TekraSyncResponse;
 import com.techstore.service.SyncService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -9,8 +8,10 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Map;
+
 @RestController
-@RequestMapping("/admin/tekra")
+@RequestMapping("/admin/tekra/sync")
 @RequiredArgsConstructor
 @Slf4j
 //@PreAuthorize("hasRole('ADMIN')")
@@ -18,106 +19,123 @@ public class TekraController {
 
     private final SyncService syncService;
 
-    @PostMapping("/sync/categories")
-    public ResponseEntity<String> syncTekraCategories() {
+    @PostMapping("/categories")
+    public ResponseEntity<Map<String, Object>> syncCategories() {
         try {
-            log.info("Starting Tekra categories synchronization via API");
+            long startTime = System.currentTimeMillis();
             syncService.syncTekraCategories();
-            return ResponseEntity.ok("Tekra categories synchronization completed successfully");
+            long duration = System.currentTimeMillis() - startTime;
+
+            Map<String, Object> response = Map.of(
+                    "success", true,
+                    "message", "Tekra categories synchronization completed",
+                    "duration", duration + "ms"
+            );
+
+            return ResponseEntity.ok(response);
         } catch (Exception e) {
-            log.error("Tekra categories synchronization failed", e);
-            return ResponseEntity.internalServerError()
-                    .body("Tekra categories synchronization failed: " + e.getMessage());
+            log.error("Error during Tekra categories sync", e);
+            Map<String, Object> response = Map.of(
+                    "success", false,
+                    "message", "Error: " + e.getMessage()
+            );
+            return ResponseEntity.status(500).body(response);
         }
     }
 
-    @PostMapping("/sync/products")
-    public ResponseEntity<String> syncTekraProducts() {
+    @PostMapping("/manufacturers")
+    public ResponseEntity<Map<String, Object>> syncManufacturers() {
         try {
-            log.info("Starting Tekra products synchronization via API");
-            syncService.syncTekraProducts();
-            return ResponseEntity.ok("Tekra products synchronization completed successfully");
-        } catch (Exception e) {
-            log.error("Tekra products synchronization failed", e);
-            return ResponseEntity.internalServerError()
-                    .body("Tekra products synchronization failed: " + e.getMessage());
-        }
-    }
-
-    // Add these endpoints to your TekraController.java
-
-// ============ MANUFACTURERS SYNC ENDPOINTS ============
-
-    @PostMapping("/sync/manufacturers")
-    public ResponseEntity<TekraSyncResponse> syncTekraManufacturers() {
-        TekraSyncResponse response = new TekraSyncResponse();
-        long startTime = System.currentTimeMillis();
-
-        try {
-            log.info("Starting Tekra manufacturers synchronization via API");
+            long startTime = System.currentTimeMillis();
             syncService.syncTekraManufacturers();
+            long duration = System.currentTimeMillis() - startTime;
 
-            response.setSuccess(true);
-            response.setMessage("Tekra manufacturers synchronization completed successfully");
-            response.setDurationMs(System.currentTimeMillis() - startTime);
+            Map<String, Object> response = Map.of(
+                    "success", true,
+                    "message", "Tekra manufacturers synchronization completed",
+                    "duration", duration + "ms"
+            );
 
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            log.error("Tekra manufacturers synchronization failed", e);
-            response.setSuccess(false);
-            response.setMessage("Tekra manufacturers synchronization failed: " + e.getMessage());
-            response.setDurationMs(System.currentTimeMillis() - startTime);
-            return ResponseEntity.internalServerError().body(response);
+            log.error("Error during Tekra manufacturers sync", e);
+            Map<String, Object> response = Map.of(
+                    "success", false,
+                    "message", "Error: " + e.getMessage()
+            );
+            return ResponseEntity.status(500).body(response);
         }
     }
 
-// ============ PARAMETERS SYNC ENDPOINTS ============
-
-    @PostMapping("/sync/parameters")
-    public ResponseEntity<TekraSyncResponse> syncTekraParameters() {
-        TekraSyncResponse response = new TekraSyncResponse();
-        long startTime = System.currentTimeMillis();
-
+    @PostMapping("/parameters")
+    public ResponseEntity<Map<String, Object>> syncParameters() {
         try {
-            log.info("Starting Tekra parameters synchronization via API");
+            long startTime = System.currentTimeMillis();
             syncService.syncTekraParameters();
+            long duration = System.currentTimeMillis() - startTime;
 
-            response.setSuccess(true);
-            response.setMessage("Tekra parameters synchronization completed successfully");
-            response.setDurationMs(System.currentTimeMillis() - startTime);
+            Map<String, Object> response = Map.of(
+                    "success", true,
+                    "message", "Tekra parameters synchronization completed",
+                    "duration", duration + "ms"
+            );
 
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            log.error("Tekra parameters synchronization failed", e);
-            response.setSuccess(false);
-            response.setMessage("Tekra parameters synchronization failed: " + e.getMessage());
-            response.setDurationMs(System.currentTimeMillis() - startTime);
-            return ResponseEntity.internalServerError().body(response);
+            log.error("Error during Tekra parameters sync", e);
+            Map<String, Object> response = Map.of(
+                    "success", false,
+                    "message", "Error: " + e.getMessage()
+            );
+            return ResponseEntity.status(500).body(response);
         }
     }
 
-// ============ COMPLETE SYNC ENDPOINT ============
-
-    @PostMapping("/sync/complete")
-    public ResponseEntity<TekraSyncResponse> syncTekraComplete() {
-        TekraSyncResponse response = new TekraSyncResponse();
-        long startTime = System.currentTimeMillis();
-
+    @PostMapping("/products")
+    public ResponseEntity<Map<String, Object>> syncProducts() {
         try {
-            log.info("Starting complete Tekra synchronization (categories + manufacturers + parameters + products)");
-            syncService.syncTekraComplete();
+            long startTime = System.currentTimeMillis();
+            syncService.syncTekraProducts();
+            long duration = System.currentTimeMillis() - startTime;
 
-            response.setSuccess(true);
-            response.setMessage("Complete Tekra synchronization finished successfully");
-            response.setDurationMs(System.currentTimeMillis() - startTime);
+            Map<String, Object> response = Map.of(
+                    "success", true,
+                    "message", "Tekra products synchronization completed",
+                    "duration", duration + "ms"
+            );
 
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            log.error("Complete Tekra synchronization failed", e);
-            response.setSuccess(false);
-            response.setMessage("Complete Tekra synchronization failed: " + e.getMessage());
-            response.setDurationMs(System.currentTimeMillis() - startTime);
-            return ResponseEntity.internalServerError().body(response);
+            log.error("Error during Tekra products sync", e);
+            Map<String, Object> response = Map.of(
+                    "success", false,
+                    "message", "Error: " + e.getMessage()
+            );
+            return ResponseEntity.status(500).body(response);
+        }
+    }
+
+    @PostMapping("/complete")
+    public ResponseEntity<Map<String, Object>> syncComplete() {
+        try {
+            long startTime = System.currentTimeMillis();
+            syncService.syncTekraComplete();
+            long duration = System.currentTimeMillis() - startTime;
+
+            Map<String, Object> response = Map.of(
+                    "success", true,
+                    "message", "Complete Tekra synchronization finished",
+                    "duration", duration + "ms"
+            );
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error during complete Tekra sync", e);
+            Map<String, Object> response = Map.of(
+                    "success", false,
+                    "message", "Error: " + e.getMessage()
+            );
+            return ResponseEntity.status(500).body(response);
         }
     }
 }

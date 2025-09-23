@@ -1,36 +1,29 @@
 package com.techstore.dto.tekra;
 
-import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlElementWrapper;
-import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlProperty;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
-
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
 import java.util.List;
 
 @Data
+@NoArgsConstructor
+@AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class TekraParameter {
-
-    @JacksonXmlProperty(localName = "id")
-    private Long id;
-
-    @JacksonXmlProperty(localName = "name")
+    private String id;
     private String name;
-
-    @JacksonXmlProperty(localName = "type")
-    private String type; // text, select, multiselect, boolean, number
-
-    @JacksonXmlProperty(localName = "value")
-    private String value;
-
-    @JacksonXmlProperty(localName = "unit")
+    private String type; // text, number, select, multiselect, boolean
     private String unit;
+    private List<TekraParameterOption> options;
 
-    @JacksonXmlProperty(localName = "isRequired")
+    @JsonProperty("is_required")
     private Boolean isRequired;
 
-    @JacksonXmlProperty(localName = "sortOrder")
-    private Integer sortOrder;
+    @JsonProperty("is_filterable")
+    private Boolean isFilterable;
 
-    @JacksonXmlElementWrapper(localName = "options")
-    @JacksonXmlProperty(localName = "option")
-    private List<TekraParameterOption> options;
+    @JsonProperty("sort_order")
+    private Integer sortOrder;
 }

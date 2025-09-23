@@ -28,4 +28,14 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
     List<Category> findByShowTrueOrderBySortOrderAscNameEnAsc();
 
     Page<Category> findByShowTrue(Pageable pageable);
+
+    Optional<Category> findByTekraId(String tekraId);
+
+    Optional<Category> findByTekraSlug(String tekraSlug);
+
+    List<Category> findByTekraIdIsNotNull();
+
+    Optional<Category> findByNameBg(String nameBg);
+
+    Optional<Category> findByNameEn(String nameEn);
 }

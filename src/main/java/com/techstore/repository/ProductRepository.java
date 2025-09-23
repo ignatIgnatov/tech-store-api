@@ -12,6 +12,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -123,4 +124,12 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     Long countAvailableProducts();
 
     List<Product> findAllByCategoryId(Long categoryId);
+
+    Optional<Product> findByTekraId(String tekraId);
+    List<Product> findByTekraIdIsNotNull();
+
+    @Query("SELECT p FROM Product p WHERE p.tekraId IS NOT NULL AND p.updatedAt < :date")
+    List<Product> findTekraProductsOlderThan(@Param("date") LocalDateTime date);
+
+    Optional<Product> findBySku(String sku);
 }

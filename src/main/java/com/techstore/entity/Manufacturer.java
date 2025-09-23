@@ -21,7 +21,7 @@ import java.util.Set;
 @Setter
 public class Manufacturer extends BaseEntity {
 
-    @Column(name = "external_id", unique = true, nullable = false)
+    @Column(name = "external_id", unique = true)
     private Long externalId;
 
     @FullTextField

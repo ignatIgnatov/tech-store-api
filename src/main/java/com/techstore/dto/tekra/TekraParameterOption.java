@@ -1,23 +1,24 @@
 package com.techstore.dto.tekra;
 
-import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlProperty;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
 
 @Data
+@NoArgsConstructor
+@AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class TekraParameterOption {
-
-    @JacksonXmlProperty(localName = "id")
-    private Long id;
-
-    @JacksonXmlProperty(localName = "value")
+    private String id;
+    private String name;
     private String value;
+    private String color; // For color attributes
 
-    @JacksonXmlProperty(localName = "label")
-    private String label;
+    @JsonProperty("image_url")
+    private String imageUrl; // For visual attributes
 
-    @JacksonXmlProperty(localName = "sortOrder")
+    @JsonProperty("sort_order")
     private Integer sortOrder;
-
-    @JacksonXmlProperty(localName = "isDefault")
-    private Boolean isDefault;
 }

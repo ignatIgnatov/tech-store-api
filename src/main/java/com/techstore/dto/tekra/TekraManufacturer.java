@@ -1,26 +1,29 @@
 package com.techstore.dto.tekra;
 
-import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlProperty;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
 
 @Data
+@NoArgsConstructor
+@AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class TekraManufacturer {
-
-    @JacksonXmlProperty(localName = "id")
-    private Long id;
-
-    @JacksonXmlProperty(localName = "name")
+    private String id;
     private String name;
-
-    @JacksonXmlProperty(localName = "description")
     private String description;
 
-    @JacksonXmlProperty(localName = "website")
+    @JsonProperty("logo_url")
+    private String logoUrl;
+
     private String website;
-
-    @JacksonXmlProperty(localName = "logo")
-    private String logo;
-
-    @JacksonXmlProperty(localName = "country")
     private String country;
+
+    @JsonProperty("is_active")
+    private Boolean isActive;
+
+    @JsonProperty("product_count")
+    private Integer productCount;
 }

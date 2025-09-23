@@ -1,4 +1,3 @@
-
 spring:
     application:
         name: tech-store-api
@@ -30,7 +29,6 @@ spring:
                         directory:
                             root: /tmp/lucene/indexes
 
-
     # Connection Pool Configuration
     hikari:
         maximum-pool-size: 3  # Увеличи значително
@@ -48,6 +46,8 @@ spring:
         deserialization:
             fail-on-unknown-properties: false
         time-zone: UTC
+        # Add these for better LocalDateTime handling
+        default-property-inclusion: non_null
 
     # Multipart Configuration (for file uploads)
     servlet:
@@ -66,6 +66,15 @@ aws:
         bucket-name: ${AWS_S3_BUCKET_NAME:aws-s3-name}
         region: ${AWS_S3_REGION:us-east-1}
 
+# ADD THIS NEW SECTION FOR TEKRA API
+tekra:
+    api:
+        base-url: https://tekra.bg/shop/api
+        access-token: ZWZiOTU1OGE2ODcxMDgxMDAzNmVjMzIwMGYzMGI5MTdiZTYxNGM5MGFkZTA0MmQxZDZlNDI0NjJlMjA4MTkzMmUwYzFjZThhYTc1YTI3N2Q5ZmNiOTJlNjJmYjc1YzkxMjE0NzRkZjBkODBkNTg3ZWEwYTFlMmEzNzdhMjA0NDBXZHNvY0VuKy80elRHT2dyK2xsMzJOTTdEeC9hbTA4S1VzVWJ3WnNxWUc4PQ==
+        enabled: true
+        timeout-seconds: 30
+        max-retries: 3
+
 # Server Configuration
 server:
     port: 8080
@@ -82,8 +91,8 @@ server:
 # LOGGING CONFIGURATION
 logging:
     level:
-#        com.techstore.service.ProductService: INFO
-#        com.techstore.mapper: DEBUG
+        #        com.techstore.service.ProductService: INFO
+        #        com.techstore.mapper: DEBUG
         org.hibernate.engine.jdbc.connections.internal.DriverManagerConnectionProviderImpl: WARN
         org.hibernate.SQL: WARN
         org.hibernate.type.descriptor.sql: WARN
@@ -93,6 +102,8 @@ logging:
         org.springframework.security.web.FilterChainProxy: WARN
         org.hibernate.type.descriptor.sql.BasicBinder: ERROR
         com.techstore: WARN
+        # Add debug logging for Tekra if needed
+        # com.techstore.service.TekraApiService: DEBUG
     pattern:
         console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
         file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
@@ -122,6 +133,17 @@ app:
             wildlife-surveillance-only: true
             auto-sync: false # Set to true to include in scheduled sync
             sync-cron: "0 30 3 * * ?" # Run Tekra sync at 3:30 AM if auto-sync is enabled
+            # Add surveillance categories configuration
+            surveillance-categories:
+                - videonablyudenie
+                - ip-kameri
+                - analogovi-kameri
+                - dvr-nvr
+                - signalizacii
+                - kontrola-dostap
+                - domofoni
+                - pozharoizvesyavane
+                - perimetrova-zashtita
 
     cache:
         names:
@@ -193,7 +215,3 @@ vali:
 excluded:
     categories:
         external-ids: 528,538,552,622,665,667,650,651,621,594,648,664,663,715,558,590,638,646,644,696,647,574,628,547,533,596,556,582,588,592,649
-
-
-
-

@@ -21,6 +21,12 @@ import java.util.List;
 @EqualsAndHashCode(callSuper = false, exclude = {"parent", "children", "products"})
 public class Category extends BaseEntity {
 
+    @Column(name = "tekra_id")
+    private String tekraId;
+
+    @Column(name = "tekra_slug")
+    private String tekraSlug;
+
     @Column(name = "external_id", unique = true)
     private Long externalId;
 

@@ -1,5 +1,6 @@
 package com.techstore.repository;
 
+import com.techstore.entity.Parameter;
 import com.techstore.entity.ParameterOption;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -22,4 +23,6 @@ public interface ParameterOptionRepository extends JpaRepository<ParameterOption
             "WHERE po.parameter.id = :parameterId AND p.show = true AND p.status != 'NOT_AVAILABLE' " +
             "ORDER BY po.order ASC")
     List<ParameterOption> findOptionsForAvailableProductsByParameter(@Param("parameterId") Long parameterId);
+
+    Optional<ParameterOption> findByParameterAndNameBg(Parameter parameter, String nameBg);
 }

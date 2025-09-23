@@ -21,11 +21,11 @@ import java.util.Set;
 @Setter
 public class ParameterOption extends BaseEntity {
 
-    @Column(name = "external_id", nullable = false)
+    @Column(name = "external_id")
     private Long externalId;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "parameter_id", nullable = false)
+    @JoinColumn(name = "parameter_id")
     private Parameter parameter;
 
     @FullTextField

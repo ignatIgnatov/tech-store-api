@@ -54,10 +54,10 @@ public class CachedLookupService {
     }
 
     @Cacheable(value = "parametersByCategory")
-    public Map<Long, Parameter> getParametersByCategory(Category category) {
+    public Map<String, Parameter> getParametersByCategory(Category category) {
         return parameterRepository.findAllByCategoryId(category.getId())
                 .stream()
-                .collect(Collectors.toMap(Parameter::getExternalId, p -> p));
+                .collect(Collectors.toMap(p -> p.getExternalId().toString(), p -> p));
     }
 
     @Cacheable(value = "productsByCategory")

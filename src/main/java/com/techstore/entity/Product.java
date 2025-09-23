@@ -30,6 +30,11 @@ import java.util.Set;
 @EqualsAndHashCode(callSuper = false)
 public class Product extends BaseEntity {
 
+    @Column(name = "tekra_id")
+    private String tekraId;
+
+    private String sku;
+
     @FullTextField
     @Column(name = "name_bg", columnDefinition = "TEXT")
     private String nameBg;

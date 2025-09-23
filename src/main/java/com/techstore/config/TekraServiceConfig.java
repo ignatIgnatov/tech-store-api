@@ -1,20 +1,14 @@
 package com.techstore.config;
 
-import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.client.RestTemplate;
 
 @Configuration
 public class TekraServiceConfig {
 
     @Bean
-    public TekraApiService tekraApiService(WebClient webClient, XmlMapper xmlMapper) {
-        return new TekraApiService(webClient, xmlMapper);
-    }
-
-    @Bean
-    public TekraMapper tekraMapper() {
-        return new TekraMapper();
+    public RestTemplate restTemplate() {
+        return new RestTemplate();
     }
 }

@@ -1,96 +1,83 @@
 package com.techstore.dto.tekra;
 
-import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlElementWrapper;
-import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlProperty;
+import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
-
-import java.math.BigDecimal;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
 import java.util.List;
+import java.util.Map;
 
 @Data
+@NoArgsConstructor
+@AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class TekraProduct {
-
-    @JacksonXmlProperty(localName = "id")
-    private Long id;
-
-    @JacksonXmlProperty(localName = "name")
+    private String id;
     private String name;
-
-    @JacksonXmlProperty(localName = "description")
     private String description;
 
-    @JacksonXmlProperty(localName = "shortDescription")
+    @JsonProperty("short_description")
     private String shortDescription;
 
-    @JacksonXmlProperty(localName = "sku")
-    private String sku;
+    private Double price;
 
-    @JacksonXmlProperty(localName = "model")
-    private String model;
+    @JsonProperty("original_price")
+    private Double originalPrice;
 
-    @JacksonXmlProperty(localName = "barcode")
-    private String barcode;
+    @JsonProperty("discount_price")
+    private Double discountPrice;
 
-    @JacksonXmlProperty(localName = "price")
-    private BigDecimal price;
-
-    @JacksonXmlProperty(localName = "pricePromo")
-    private BigDecimal pricePromo;
-
-    @JacksonXmlProperty(localName = "currency")
     private String currency;
+    private String sku;
+    private String model;
+    private String brand;
+    private String category;
 
-    @JacksonXmlProperty(localName = "availability")
-    private String availability;
+    @JsonProperty("category_slug")
+    private String categorySlug;
 
-    @JacksonXmlProperty(localName = "inStock")
+    @JsonProperty("in_stock")
     private Boolean inStock;
 
-    @JacksonXmlProperty(localName = "quantity")
     private Integer quantity;
 
-    @JacksonXmlProperty(localName = "weight")
-    private BigDecimal weight;
+    @JsonProperty("image_url")
+    private String imageUrl;
 
-    @JacksonXmlProperty(localName = "warranty")
-    private Integer warranty;
-
-    @JacksonXmlProperty(localName = "category")
-    private TekraCategory category;
-
-    @JacksonXmlProperty(localName = "manufacturer")
-    private TekraManufacturer manufacturer;
-
-    @JacksonXmlElementWrapper(localName = "images")
-    @JacksonXmlProperty(localName = "image")
-    private List<TekraImage> images;
-
-    @JacksonXmlElementWrapper(localName = "parameters")
-    @JacksonXmlProperty(localName = "parameter")
-    private List<TekraParameter> parameters;
-
-    @JacksonXmlElementWrapper(localName = "tags")
-    @JacksonXmlProperty(localName = "tag")
+    private List<String> images;
+    private String url;
+    private String warranty;
+    private Double weight;
+    private String dimensions;
+    private Map<String, String> specifications;
     private List<String> tags;
 
-    @JacksonXmlProperty(localName = "url")
-    private String url;
+    @JsonProperty("is_promo")
+    private Boolean isPromo;
 
-    @JacksonXmlProperty(localName = "dateCreated")
-    private String dateCreated;
+    @JsonProperty("is_new")
+    private Boolean isNew;
 
-    @JacksonXmlProperty(localName = "dateModified")
-    private String dateModified;
-
-    @JacksonXmlProperty(localName = "isActive")
-    private Boolean isActive;
-
-    @JacksonXmlProperty(localName = "isFeatured")
+    @JsonProperty("is_featured")
     private Boolean isFeatured;
 
-    @JacksonXmlProperty(localName = "discount")
-    private BigDecimal discount;
+    @JsonProperty("view_count")
+    private Integer viewCount;
 
-    @JacksonXmlProperty(localName = "discountPercent")
-    private BigDecimal discountPercent;
+    @JsonProperty("created_at")
+    private String createdAt;
+
+    @JsonProperty("updated_at")
+    private String updatedAt;
+
+    @JsonProperty("meta_title")
+    private String metaTitle;
+
+    @JsonProperty("meta_description")
+    private String metaDescription;
+
+    private List<TekraProductVariant> variants;
+    private List<TekraProductAttribute> attributes;
 }

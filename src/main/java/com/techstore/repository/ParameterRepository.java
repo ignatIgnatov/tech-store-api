@@ -38,4 +38,6 @@ public interface ParameterRepository extends JpaRepository<Parameter, Long> {
     @Query("SELECT po FROM ParameterOption po WHERE po.externalId = :externalId AND po.parameter.id = :parameterId")
     Optional<ParameterOption> findByExternalIdAndParameterId(@Param("externalId") Long externalId,
                                                              @Param("parameterId") Long parameterId);
+
+    Optional<Parameter> findByCategoryAndNameBg(Category category, String nameBg);
 }

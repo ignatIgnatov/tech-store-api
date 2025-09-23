@@ -29,12 +29,15 @@ import java.util.Set;
 @Data
 public class Parameter extends BaseEntity {
 
-    @Column(name = "external_id", nullable = false)
+    @Column(name = "external_id")
     private Long externalId;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "category_id", nullable = false)
+    @JoinColumn(name = "category_id")
     private Category category;
+
+    @Column(name = "tekra_key")
+    private String tekraKey;
 
     @FullTextField
     @Column(name = "name_bg")

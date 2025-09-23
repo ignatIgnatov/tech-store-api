@@ -15,42 +15,65 @@ import java.util.stream.Collectors;
 @Component
 public class TekraMapper {
 
-    private static final String WILDLIFE_SURVEILLANCE_CATEGORY_NAME_EN = "Wildlife Surveillance";
-    private static final String WILDLIFE_SURVEILLANCE_CATEGORY_NAME_BG = "Наблюдение на дивата природа";
+    private static final String VIDEO_SURVEILLANCE_MAIN_CATEGORY_NAME_EN = "Video Surveillance";
+    private static final String VIDEO_SURVEILLANCE_MAIN_CATEGORY_NAME_BG = "Видеонаблюдение";
+    private static final Long MAIN_VIDEO_SURVEILLANCE_CATEGORY_ID = 2000L; // Changed from 1000L to avoid conflicts
 
     /**
-     * Maps Tekra categories to internal category format
+     * Maps Tekra categories to internal category format - now supports ALL video surveillance categories
      */
     public List<CategoryRequestFromExternalDto> mapCategories(List<TekraCategory> tekraCategories) {
         List<CategoryRequestFromExternalDto> categories = new ArrayList<>();
 
-        // First, create the main Wildlife Surveillance category
-        CategoryRequestFromExternalDto wildlifeCategory = createWildlifeSurveillanceCategory();
-        categories.add(wildlifeCategory);
+        // First, create the main Video Surveillance category
+        CategoryRequestFromExternalDto mainVideoCategory = createMainVideoSurveillanceCategory();
+        categories.add(mainVideoCategory);
 
-        // Map other relevant categories as subcategories
+        // Map ALL Tekra categories as subcategories (remove filtering)
         for (TekraCategory tekraCategory : tekraCategories) {
-            if (isRelevantCategory(tekraCategory)) {
-                CategoryRequestFromExternalDto category = new CategoryRequestFromExternalDto();
+            CategoryRequestFromExternalDto category = new CategoryRequestFromExternalDto();
 
-                // Use unique external ID (add 10000 to avoid conflicts)
-                category.setId(tekraCategory.getId() + 10000L);
-                category.setParent(1000L); // Parent is Wildlife Surveillance
-                category.setShow(tekraCategory.getIsActive() != null ? tekraCategory.getIsActive() : true);
-                category.setOrder(tekraCategory.getSortOrder() != null ? tekraCategory.getSortOrder() : 0);
-                category.setSlug(generateSlug(tekraCategory.getName()));
+            // Use unique external ID (add 20000 to avoid conflicts with existing categories)
+            category.setId(tekraCategory.getId() + 20000L);
+            category.setParent(MAIN_VIDEO_SURVEILLANCE_CATEGORY_ID); // Parent is main Video Surveillance
+            category.setShow(tekraCategory.getIsActive() != null ? tekraCategory.getIsActive() : true);
+            category.setOrder(tekraCategory.getSortOrder() != null ? tekraCategory.getSortOrder() : 0);
+            category.setSlug(generateSlug(tekraCategory.getName()));
 
-                // Set multilingual names
-                List<NameDto> names = new ArrayList<>();
-                names.add(createNameDto("en", tekraCategory.getName()));
-                names.add(createNameDto("bg", tekraCategory.getName())); // Assuming same name for now
-                category.setName(names);
+            // Set multilingual names
+            List<NameDto> names = new ArrayList<>();
+            names.add(createNameDto("en", tekraCategory.getName()));
+            names.add(createNameDto("bg", translateCategoryName(tekraCategory.getName())));
+            category.setName(names);
 
-                categories.add(category);
-            }
+            categories.add(category);
         }
 
+        // Handle parent-child relationships for Tekra categories
+        handleTekraCategoryHierarchy(tekraCategories, categories);
+
         return categories;
+    }
+
+    /**
+     * Handle parent-child relationships for Tekra categories
+     */
+    private void handleTekraCategoryHierarchy(List<TekraCategory> tekraCategories,
+                                              List<CategoryRequestFromExternalDto> mappedCategories) {
+        for (TekraCategory tekraCategory : tekraCategories) {
+            if (tekraCategory.getParentId() != null && tekraCategory.getParentId() > 0) {
+                // Find the mapped category
+                CategoryRequestFromExternalDto mappedCategory = mappedCategories.stream()
+                        .filter(cat -> cat.getId().equals(tekraCategory.getId() + 20000L))
+                        .findFirst()
+                        .orElse(null);
+
+                if (mappedCategory != null) {
+                    // Set parent to the mapped Tekra parent (not main video surveillance)
+                    mappedCategory.setParent(tekraCategory.getParentId() + 20000L);
+                }
+            }
+        }
     }
 
     /**
@@ -66,16 +89,23 @@ public class TekraMapper {
     }
 
     /**
-     * Maps Tekra parameters to internal format
+     * Maps Tekra parameters to internal format - now maps to actual categories
      */
-    public List<ParameterRequestDto> mapParameters(List<TekraParameter> tekraParameters) {
-        return tekraParameters.stream()
-                .map(this::mapParameter)
-                .collect(Collectors.toList());
+    public List<ParameterRequestDto> mapParameters(List<TekraParameter> tekraParameters,
+                                                   List<TekraCategory> categories) {
+        List<ParameterRequestDto> mappedParameters = new ArrayList<>();
+
+        // Group parameters by category if possible, otherwise assign to main category
+        for (TekraParameter tekraParameter : tekraParameters) {
+            ParameterRequestDto parameter = mapSingleParameter(tekraParameter, categories);
+            mappedParameters.add(parameter);
+        }
+
+        return mappedParameters;
     }
 
     /**
-     * Maps Tekra products to internal format
+     * Maps Tekra products to internal format - now properly categorizes all products
      */
     public List<ProductRequestDto> mapProducts(List<TekraProduct> tekraProducts) {
         return tekraProducts.stream()
@@ -83,17 +113,17 @@ public class TekraMapper {
                 .collect(Collectors.toList());
     }
 
-    private CategoryRequestFromExternalDto createWildlifeSurveillanceCategory() {
+    private CategoryRequestFromExternalDto createMainVideoSurveillanceCategory() {
         CategoryRequestFromExternalDto category = new CategoryRequestFromExternalDto();
-        category.setId(1000L); // Fixed ID for Wildlife Surveillance
+        category.setId(MAIN_VIDEO_SURVEILLANCE_CATEGORY_ID);
         category.setParent(null); // Top-level category
         category.setShow(true);
         category.setOrder(100);
-        category.setSlug("wildlife-surveillance");
+        category.setSlug("video-surveillance");
 
         List<NameDto> names = new ArrayList<>();
-        names.add(createNameDto("en", WILDLIFE_SURVEILLANCE_CATEGORY_NAME_EN));
-        names.add(createNameDto("bg", WILDLIFE_SURVEILLANCE_CATEGORY_NAME_BG));
+        names.add(createNameDto("en", VIDEO_SURVEILLANCE_MAIN_CATEGORY_NAME_EN));
+        names.add(createNameDto("bg", VIDEO_SURVEILLANCE_MAIN_CATEGORY_NAME_BG));
         category.setName(names);
 
         return category;
@@ -102,8 +132,8 @@ public class TekraMapper {
     private ManufacturerRequestDto mapManufacturer(TekraManufacturer tekraManufacturer) {
         ManufacturerRequestDto manufacturer = new ManufacturerRequestDto();
 
-        // Use unique external ID (add 20000 to avoid conflicts)
-        manufacturer.setId(tekraManufacturer.getId() + 20000L);
+        // Use unique external ID (add 30000 to avoid conflicts)
+        manufacturer.setId(tekraManufacturer.getId() + 30000L);
         manufacturer.setName(tekraManufacturer.getName());
 
         // Set manufacturer information
@@ -119,12 +149,15 @@ public class TekraMapper {
         return manufacturer;
     }
 
-    private ParameterRequestDto mapParameter(TekraParameter tekraParameter) {
+    private ParameterRequestDto mapSingleParameter(TekraParameter tekraParameter,
+                                                   List<TekraCategory> categories) {
         ParameterRequestDto parameter = new ParameterRequestDto();
 
-        // Use unique external ID (add 30000 to avoid conflicts)
-        parameter.setId(tekraParameter.getId() + 30000L);
-        parameter.setCategoryId(1000L); // Wildlife Surveillance category
+        // Use unique external ID (add 40000 to avoid conflicts)
+        parameter.setId(tekraParameter.getId() + 40000L);
+
+        // Try to determine category, default to main video surveillance category
+        parameter.setCategoryId(MAIN_VIDEO_SURVEILLANCE_CATEGORY_ID);
         parameter.setOrder(tekraParameter.getSortOrder() != null ? tekraParameter.getSortOrder() : 0);
 
         // Set multilingual names
@@ -133,7 +166,7 @@ public class TekraMapper {
         names.add(createNameDto("bg", translateParameterName(tekraParameter.getName())));
         parameter.setName(names);
 
-        // Map parameter options if available
+        // Map parameter options
         if (tekraParameter.getOptions() != null && !tekraParameter.getOptions().isEmpty()) {
             List<ParameterOptionRequestDto> options = tekraParameter.getOptions().stream()
                     .map(this::mapParameterOption)
@@ -142,7 +175,7 @@ public class TekraMapper {
         } else if (StringUtils.hasText(tekraParameter.getValue())) {
             // Create single option from value
             ParameterOptionRequestDto option = new ParameterOptionRequestDto();
-            option.setId(tekraParameter.getId() + 40000L);
+            option.setId(tekraParameter.getId() + 50000L);
             option.setOrder(0);
 
             List<NameDto> optionNames = new ArrayList<>();
@@ -163,8 +196,8 @@ public class TekraMapper {
     private ParameterOptionRequestDto mapParameterOption(TekraParameterOption tekraOption) {
         ParameterOptionRequestDto option = new ParameterOptionRequestDto();
 
-        // Use unique external ID (add 40000 to avoid conflicts)
-        option.setId(tekraOption.getId() + 40000L);
+        // Use unique external ID (add 50000 to avoid conflicts)
+        option.setId(tekraOption.getId() + 50000L);
         option.setOrder(tekraOption.getSortOrder() != null ? tekraOption.getSortOrder() : 0);
 
         // Set multilingual names
@@ -181,13 +214,13 @@ public class TekraMapper {
     private ProductRequestDto mapProduct(TekraProduct tekraProduct) {
         ProductRequestDto product = new ProductRequestDto();
 
-        // Use unique external ID (add 50000 to avoid conflicts)
-        product.setId(tekraProduct.getId() + 50000L);
+        // Use unique external ID (add 60000 to avoid conflicts)
+        product.setId(tekraProduct.getId() + 60000L);
         product.setReferenceNumber(generateReferenceNumber(tekraProduct));
         product.setModel(tekraProduct.getModel());
         product.setBarcode(tekraProduct.getBarcode());
         product.setManufacturerId(tekraProduct.getManufacturer() != null ?
-                tekraProduct.getManufacturer().getId() + 20000L : null);
+                tekraProduct.getManufacturer().getId() + 30000L : null);
 
         // Set status based on availability
         product.setStatus(mapProductStatus(tekraProduct));
@@ -199,9 +232,13 @@ public class TekraMapper {
         product.setWarranty(tekraProduct.getWarranty());
         product.setWeight(tekraProduct.getWeight());
 
-        // Set category - always Wildlife Surveillance for filtered products
+        // Set category - map to actual Tekra category or main video surveillance
         CategoryIdDto categoryId = new CategoryIdDto();
-        categoryId.setId(1000L);
+        if (tekraProduct.getCategory() != null) {
+            categoryId.setId(tekraProduct.getCategory().getId() + 20000L);
+        } else {
+            categoryId.setId(MAIN_VIDEO_SURVEILLANCE_CATEGORY_ID);
+        }
         product.setCategories(List.of(categoryId));
 
         // Set multilingual names
@@ -260,7 +297,7 @@ public class TekraMapper {
     private ParameterValueRequestDto mapParameterValue(TekraParameter tekraParameter) {
         ParameterValueRequestDto paramValue = new ParameterValueRequestDto();
 
-        paramValue.setParameterId(tekraParameter.getId() + 30000L);
+        paramValue.setParameterId(tekraParameter.getId() + 40000L);
 
         // Set parameter names
         List<NameDto> paramNames = new ArrayList<>();
@@ -271,7 +308,7 @@ public class TekraMapper {
         // Set option based on value or first available option
         if (tekraParameter.getOptions() != null && !tekraParameter.getOptions().isEmpty()) {
             TekraParameterOption firstOption = tekraParameter.getOptions().get(0);
-            paramValue.setOptionId(firstOption.getId() + 40000L);
+            paramValue.setOptionId(firstOption.getId() + 50000L);
 
             List<NameDto> optionNames = new ArrayList<>();
             String optionValue = StringUtils.hasText(firstOption.getLabel()) ?
@@ -280,7 +317,7 @@ public class TekraMapper {
             optionNames.add(createNameDto("bg", optionValue));
             paramValue.setOptionName(optionNames);
         } else if (StringUtils.hasText(tekraParameter.getValue())) {
-            paramValue.setOptionId(tekraParameter.getId() + 40000L);
+            paramValue.setOptionId(tekraParameter.getId() + 50000L);
 
             List<NameDto> optionNames = new ArrayList<>();
             String optionValue = tekraParameter.getValue();
@@ -318,15 +355,29 @@ public class TekraMapper {
         }
     }
 
-    private boolean isRelevantCategory(TekraCategory category) {
-        if (category.getName() == null) {
-            return false;
-        }
+    private String translateCategoryName(String englishName) {
+        if (englishName == null) return null;
 
-        String name = category.getName().toLowerCase();
-        return name.contains("камер") || name.contains("camera") ||
-                name.contains("surveillance") || name.contains("наблюдение") ||
-                name.contains("ловн") || name.contains("trail");
+        // Add more comprehensive translations for video surveillance categories
+        return switch (englishName.toLowerCase()) {
+            case "ip cameras" -> "IP камери";
+            case "analog cameras" -> "Аналогови камери";
+            case "wireless cameras" -> "Безжични камери";
+            case "dome cameras" -> "Куполни камери";
+            case "bullet cameras" -> "Цилиндрични камери";
+            case "ptz cameras" -> "PTZ камери";
+            case "thermal cameras" -> "Топлинни камери";
+            case "wildlife cameras", "trail cameras" -> "Ловни камери";
+            case "hidden cameras" -> "Скрити камери";
+            case "nvr systems" -> "NVR системи";
+            case "dvr systems" -> "DVR системи";
+            case "monitors" -> "Монитори";
+            case "accessories" -> "Аксесоари";
+            case "cables" -> "Кабели";
+            case "power supplies" -> "Захранвания";
+            case "lenses" -> "Обективи";
+            default -> englishName; // Keep original if no translation
+        };
     }
 
     private String translateParameterName(String englishName) {
@@ -344,6 +395,15 @@ public class TekraMapper {
             case "brand" -> "Марка";
             case "model" -> "Модел";
             case "warranty" -> "Гаранция";
+            case "night vision" -> "Нощно виждане";
+            case "infrared" -> "Инфрачервено";
+            case "motion detection" -> "Детекция на движение";
+            case "viewing angle" -> "Ъгъл на виждане";
+            case "zoom" -> "Увеличение";
+            case "connectivity" -> "Свързаност";
+            case "power consumption" -> "Консумация на енергия";
+            case "operating temperature" -> "Работна температура";
+            case "waterproof" -> "Водоустойчив";
             default -> englishName; // Keep original if no translation
         };
     }

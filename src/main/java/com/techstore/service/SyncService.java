@@ -10,6 +10,7 @@ import com.techstore.dto.request.ProductRequestDto;
 import com.techstore.dto.tekra.TekraCategory;
 import com.techstore.dto.tekra.TekraParameter;
 import com.techstore.dto.tekra.TekraProduct;
+import com.techstore.dto.tekra.TekraProductFeed;
 import com.techstore.entity.Category;
 import com.techstore.entity.Manufacturer;
 import com.techstore.entity.Parameter;
@@ -36,6 +37,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -707,42 +709,56 @@ public class SyncService {
         }
     }
 
+    // Add these new methods to your existing SyncService class
+
+/**
+ * ============ COMPREHENSIVE TEKRA SYNC METHODS ============
+ */
+
+    /**
+     * Syncs ALL Tekra products across all categories
+     */
     @Transactional
-    public void syncTekraWildlifeSurveillance() {
-        SyncLog syncLog = createSyncLogSimple("TEKRA_VIDEO_SURVEILLANCE");
+    public void syncAllTekraProducts() {
+        SyncLog syncLog = createSyncLogSimple("TEKRA_ALL_PRODUCTS");
         long startTime = System.currentTimeMillis();
 
         try {
-            log.info("Starting Tekra Video Surveillance synchronization");
+            log.info("Starting comprehensive Tekra synchronization - ALL products");
 
-            syncTekraManufacturers();
-            syncTekraCategories();
-            syncTekraParameters();
+            // First sync supporting data
+            syncAllTekraManufacturers();
+            syncAllTekraCategories();
+            syncAllTekraParameters();
 
-            TekraSyncResult result = syncTekraProducts();
+            // Then sync all products
+            TekraSyncResult result = syncAllTekraProductsInternal();
 
             updateSyncLogSimple(syncLog, LOG_STATUS_SUCCESS, result.processed,
                     result.created, result.updated, result.errors,
                     result.errors > 0 ? String.format("Completed with %d errors", result.errors) : null,
                     startTime);
 
-            log.info("Tekra Video Surveillance synchronization completed - Created: {}, Updated: {}, Errors: {}",
+            log.info("Comprehensive Tekra synchronization completed - Created: {}, Updated: {}, Errors: {}",
                     result.created, result.updated, result.errors);
 
         } catch (Exception e) {
             updateSyncLogSimple(syncLog, LOG_STATUS_FAILED, 0, 0, 0, 0, e.getMessage(), startTime);
-            log.error("Error during Tekra Video Surveillance synchronization", e);
+            log.error("Error during comprehensive Tekra synchronization", e);
             throw e;
         }
     }
 
+    /**
+     * Syncs ALL manufacturers from Tekra (not just video surveillance)
+     */
     @Transactional
-    public void syncTekraManufacturers() {
-        log.info("Syncing Tekra manufacturers");
+    public void syncAllTekraManufacturers() {
+        log.info("Syncing ALL Tekra manufacturers");
 
         try {
-            List<TekraProduct> wildlifeProducts = tekraApiService.getWildlifeSurveillanceProducts();
-            List<ManufacturerRequestDto> manufacturers = tekraMapper.mapManufacturers(wildlifeProducts);
+            TekraProductFeed allProducts = tekraApiService.getAllProducts();
+            List<ManufacturerRequestDto> manufacturers = tekraMapper.mapManufacturers(allProducts.getProducts());
 
             Map<Long, Manufacturer> existingManufacturers = cachedLookupService.getAllManufacturersMap();
 
@@ -763,21 +779,24 @@ public class SyncService {
                 }
             }
 
-            log.info("Tekra manufacturers sync completed - Created: {}, Updated: {}", created, updated);
+            log.info("All Tekra manufacturers sync completed - Created: {}, Updated: {}", created, updated);
 
         } catch (Exception e) {
-            log.error("Error syncing Tekra manufacturers: {}", e.getMessage(), e);
+            log.error("Error syncing all Tekra manufacturers: {}", e.getMessage(), e);
             throw e;
         }
     }
 
+    /**
+     * Syncs ALL categories from Tekra
+     */
     @Transactional
-    public void syncTekraCategories() {
-        log.info("Syncing Tekra categories");
+    public void syncAllTekraCategories() {
+        log.info("Syncing ALL Tekra categories");
 
         try {
-            List<TekraCategory> tekraCategories = tekraApiService.getCategories();
-            List<CategoryRequestFromExternalDto> categories = tekraMapper.mapCategories(tekraCategories);
+            List<TekraCategory> allTekraCategories = tekraApiService.getAllCategories();
+            List<CategoryRequestFromExternalDto> categories = tekraMapper.mapCategories(allTekraCategories);
 
             Map<Long, Category> existingCategories = cachedLookupService.getAllCategoriesMap();
 
@@ -800,63 +819,80 @@ public class SyncService {
 
             updateCategoryParents(categories, existingCategories);
 
-            log.info("Tekra categories sync completed - Created: {}, Updated: {}", created, updated);
+            log.info("All Tekra categories sync completed - Created: {}, Updated: {}", created, updated);
 
         } catch (Exception e) {
-            log.error("Error syncing Tekra categories: {}", e.getMessage(), e);
+            log.error("Error syncing all Tekra categories: {}", e.getMessage(), e);
             throw e;
         }
     }
 
+    /**
+     * Syncs ALL parameters from Tekra
+     */
     @Transactional
-    public void syncTekraParameters() {
-        log.info("Syncing Tekra parameters");
+    public void syncAllTekraParameters() {
+        log.info("Syncing ALL Tekra parameters");
 
         try {
-            List<TekraParameter> tekraParameters = tekraApiService.getWildlifeSurveillanceParameters();
-            List<ParameterRequestDto> parameters = tekraMapper.mapParameters(tekraParameters);
+            List<TekraParameter> allTekraParameters = tekraApiService.getAllParameters();
+            List<ParameterRequestDto> parameters = tekraMapper.mapParameters(allTekraParameters);
 
-            Category wildlifeCategory = categoryRepository.findByExternalId(1000L)
-                    .orElseThrow(() -> new RuntimeException("Video Surveillance category not found"));
+            // Group parameters by category
+            Map<Long, List<ParameterRequestDto>> parametersByCategory = parameters.stream()
+                    .collect(Collectors.groupingBy(ParameterRequestDto::getCategoryId));
 
-            Map<Long, Parameter> existingParameters = cachedLookupService.getParametersByCategory(wildlifeCategory);
+            long totalCreated = 0, totalUpdated = 0;
 
-            long created = 0, updated = 0;
+            for (Map.Entry<Long, List<ParameterRequestDto>> entry : parametersByCategory.entrySet()) {
+                Long categoryExternalId = entry.getKey();
+                List<ParameterRequestDto> categoryParameters = entry.getValue();
 
-            for (ParameterRequestDto extParameter : parameters) {
-                Parameter parameter = existingParameters.get(extParameter.getId());
-
-                if (parameter == null) {
-                    parameter = createParameterFromExternal(extParameter, wildlifeCategory);
-                    parameter = parameterRepository.save(parameter);
-                    existingParameters.put(parameter.getExternalId(), parameter);
-                    created++;
-                } else {
-                    updateParameterFromExternal(parameter, extParameter);
-                    parameter = parameterRepository.save(parameter);
-                    updated++;
+                Category category = categoryRepository.findByExternalId(categoryExternalId).orElse(null);
+                if (category == null) {
+                    log.warn("Category not found for external ID: {}, skipping parameters", categoryExternalId);
+                    continue;
                 }
 
-                syncParameterOptionsChunked(parameter, extParameter.getOptions());
+                Map<Long, Parameter> existingParameters = cachedLookupService.getParametersByCategory(category);
+
+                for (ParameterRequestDto extParameter : categoryParameters) {
+                    Parameter parameter = existingParameters.get(extParameter.getId());
+
+                    if (parameter == null) {
+                        parameter = createParameterFromExternal(extParameter, category);
+                        parameter = parameterRepository.save(parameter);
+                        existingParameters.put(parameter.getExternalId(), parameter);
+                        totalCreated++;
+                    } else {
+                        updateParameterFromExternal(parameter, extParameter);
+                        parameter = parameterRepository.save(parameter);
+                        totalUpdated++;
+                    }
+
+                    syncParameterOptionsChunked(parameter, extParameter.getOptions());
+                }
             }
 
-            log.info("Tekra parameters sync completed - Created: {}, Updated: {}", created, updated);
+            log.info("All Tekra parameters sync completed - Created: {}, Updated: {}", totalCreated, totalUpdated);
 
         } catch (Exception e) {
-            log.error("Error syncing Tekra parameters: {}", e.getMessage(), e);
+            log.error("Error syncing all Tekra parameters: {}", e.getMessage(), e);
             throw e;
         }
     }
 
-    @Transactional
-    public TekraSyncResult syncTekraProducts() {
-        log.info("Syncing Tekra Video Surveillance products");
+    /**
+     * Internal method to sync all Tekra products
+     */
+    private TekraSyncResult syncAllTekraProductsInternal() {
+        log.info("Syncing ALL Tekra products");
 
         long processed = 0, created = 0, updated = 0, errors = 0;
 
         try {
-            List<TekraProduct> wildlifeProducts = tekraApiService.getWildlifeSurveillanceProducts();
-            List<ProductRequestDto> products = tekraMapper.mapProducts(wildlifeProducts);
+            TekraProductFeed allProducts = tekraApiService.getAllProducts();
+            List<ProductRequestDto> products = tekraMapper.mapProducts(allProducts.getProducts());
 
             Map<Long, Manufacturer> manufacturersMap = manufacturerRepository.findAll()
                     .stream()
@@ -864,7 +900,11 @@ public class SyncService {
 
             List<List<ProductRequestDto>> chunks = partitionList(products, batchSize);
 
-            for (List<ProductRequestDto> chunk : chunks) {
+            log.info("Processing {} products in {} chunks", products.size(), chunks.size());
+
+            for (int i = 0; i < chunks.size(); i++) {
+                List<ProductRequestDto> chunk = chunks.get(i);
+
                 try {
                     ChunkResult result = processProductsChunk(chunk, manufacturersMap);
                     processed += result.processed;
@@ -872,40 +912,259 @@ public class SyncService {
                     updated += result.updated;
                     errors += result.errors;
 
+                    log.debug("Processed chunk {}/{} - Created: {}, Updated: {}, Errors: {}",
+                            i + 1, chunks.size(), result.created, result.updated, result.errors);
+
+                    // Small delay between chunks
                     Thread.sleep(200);
 
                 } catch (Exception e) {
-                    log.error("Error processing Tekra product chunk: {}", e.getMessage());
+                    log.error("Error processing Tekra product chunk {}/{}: {}", i + 1, chunks.size(), e.getMessage());
                     errors += chunk.size();
                 }
             }
 
-            log.info("Tekra products sync completed - Processed: {}, Created: {}, Updated: {}, Errors: {}",
+            log.info("All Tekra products sync completed - Processed: {}, Created: {}, Updated: {}, Errors: {}",
                     processed, created, updated, errors);
 
             return new TekraSyncResult(processed, created, updated, errors);
 
         } catch (Exception e) {
-            log.error("Error syncing Tekra products: {}", e.getMessage(), e);
+            log.error("Error syncing all Tekra products: {}", e.getMessage(), e);
             throw e;
         }
     }
 
-    public void syncVideoSurveillanceOnly() {
-        log.info("Starting manual Video Surveillance sync from Tekra");
-        syncTekraWildlifeSurveillance();
-        log.info("Manual Video Surveillance sync completed");
+    /**
+     * Syncs products for a specific Tekra category by slug
+     */
+    @Transactional
+    public void syncTekraProductsByCategory(String categorySlug) {
+        log.info("Syncing Tekra products for category: {}", categorySlug);
+
+        try {
+            TekraProductFeed categoryProducts = tekraApiService.getProductsByCategory(categorySlug);
+            List<ProductRequestDto> products = tekraMapper.mapProducts(categoryProducts.getProducts());
+
+            Map<Long, Manufacturer> manufacturersMap = manufacturerRepository.findAll()
+                    .stream()
+                    .collect(Collectors.toMap(Manufacturer::getExternalId, m -> m));
+
+            long created = 0, updated = 0, errors = 0;
+
+            for (ProductRequestDto product : products) {
+                try {
+                    Optional<Product> existingProduct = productRepository.findByExternalId(product.getId());
+
+                    if (existingProduct.isPresent()) {
+                        updateProductFromExternal(existingProduct.get(), product, manufacturersMap);
+                        updated++;
+                    } else {
+                        createProductFromExternal(product, manufacturersMap);
+                        created++;
+                    }
+                } catch (Exception e) {
+                    errors++;
+                    log.error("Error processing product {} for category {}: {}",
+                            product.getId(), categorySlug, e.getMessage());
+                }
+            }
+
+            log.info("Category {} sync completed - Created: {}, Updated: {}, Errors: {}",
+                    categorySlug, created, updated, errors);
+
+        } catch (Exception e) {
+            log.error("Error syncing products for category {}: {}", categorySlug, e.getMessage(), e);
+            throw e;
+        }
     }
 
-    public int getTekraVideoSurveillanceProductsCount() {
+    /**
+     * Gets comprehensive statistics about Tekra integration
+     */
+    public Map<String, Object> getTekraStatistics() {
+        log.info("Generating Tekra integration statistics");
+
+        Map<String, Object> stats = new HashMap<>();
+
         try {
-            List<TekraProduct> products = tekraApiService.getWildlifeSurveillanceProducts();
-            return products.size();
+            // Get total product count from API
+            TekraProductFeed feed = tekraApiService.getAllProducts();
+            stats.put("totalProductsInTekra", feed.getTotalProducts());
+            stats.put("actualProductsFetched", feed.getProducts() != null ? feed.getProducts().size() : 0);
+
+            // Get category statistics
+            List<TekraCategory> categories = tekraApiService.getAllCategories();
+            stats.put("totalCategoriesInTekra", categories.size());
+
+            // Get our database statistics
+            stats.put("categoriesInOurDB", categoryRepository.count());
+            stats.put("manufacturersInOurDB", manufacturerRepository.count());
+            stats.put("productsInOurDB", productRepository.count());
+            stats.put("parametersInOurDB", parameterRepository.count());
+
+            // Get sync statistics
+            Optional<SyncLog> lastSync = syncLogRepository.findTopBySyncTypeOrderByCreatedAtDesc("TEKRA_ALL_PRODUCTS");
+            if (lastSync.isPresent()) {
+                stats.put("lastSyncDate", lastSync.get().getCreatedAt());
+                stats.put("lastSyncStatus", lastSync.get().getStatus());
+                stats.put("lastSyncDuration", lastSync.get().getDurationMs());
+            }
+
+            log.info("Tekra statistics generated successfully");
+
         } catch (Exception e) {
-            log.error("Error getting Video Surveillance products count: {}", e.getMessage());
+            log.error("Error generating Tekra statistics: {}", e.getMessage());
+            stats.put("error", e.getMessage());
+        }
+
+        return stats;
+    }
+
+    /**
+     * Validates Tekra integration health
+     */
+    public Map<String, Object> validateTekraIntegration() {
+        log.info("Validating Tekra integration health");
+
+        Map<String, Object> validation = new HashMap<>();
+
+        try {
+            // Test API connection
+            boolean connectionOk = tekraApiService.testConnection();
+            validation.put("apiConnectionStatus", connectionOk ? "OK" : "FAILED");
+
+            if (connectionOk) {
+                // Test data integrity
+                TekraProductFeed sample = tekraApiService.fetchProductPage(1, null, null, null);
+                validation.put("sampleDataReceived", sample != null && sample.getProducts() != null);
+                validation.put("sampleProductCount", sample != null && sample.getProducts() != null ? sample.getProducts().size() : 0);
+
+                // Check if we have recent data
+                long productsWithTekraData = productRepository.findAll().stream()
+                        .mapToLong(p -> p.getExternalId() != null && p.getExternalId() > 50000L ? 1 : 0) // Tekra IDs are > 50000
+                        .sum();
+                validation.put("productsWithTekraData", productsWithTekraData);
+
+                validation.put("overallStatus", "HEALTHY");
+            } else {
+                validation.put("overallStatus", "CONNECTION_FAILED");
+            }
+
+        } catch (Exception e) {
+            log.error("Error validating Tekra integration: {}", e.getMessage());
+            validation.put("overallStatus", "ERROR");
+            validation.put("error", e.getMessage());
+        }
+
+        return validation;
+    }
+
+    /**
+     * Performs incremental sync (only new/updated products)
+     */
+    @Transactional
+    public void performIncrementalTekraSync() {
+        log.info("Performing incremental Tekra sync");
+
+        SyncLog syncLog = createSyncLogSimple("TEKRA_INCREMENTAL");
+        long startTime = System.currentTimeMillis();
+
+        try {
+            // Get all current products from Tekra
+            TekraProductFeed allProducts = tekraApiService.getAllProducts();
+            List<ProductRequestDto> tekraProducts = tekraMapper.mapProducts(allProducts.getProducts());
+
+            // Get our existing products with Tekra external IDs
+            List<Product> existingProducts = productRepository.findAll().stream()
+                    .filter(p -> p.getExternalId() != null && p.getExternalId() > 50000L)
+                    .collect(Collectors.toList());
+
+            Set<Long> existingExternalIds = existingProducts.stream()
+                    .map(Product::getExternalId)
+                    .collect(Collectors.toSet());
+
+            // Find new products (exist in Tekra but not in our DB)
+            List<ProductRequestDto> newProducts = tekraProducts.stream()
+                    .filter(p -> !existingExternalIds.contains(p.getId()))
+                    .collect(Collectors.toList());
+
+            // Find products to update (exist in both)
+            List<ProductRequestDto> productsToUpdate = tekraProducts.stream()
+                    .filter(p -> existingExternalIds.contains(p.getId()))
+                    .collect(Collectors.toList());
+
+            Map<Long, Manufacturer> manufacturersMap = manufacturerRepository.findAll()
+                    .stream()
+                    .collect(Collectors.toMap(Manufacturer::getExternalId, m -> m));
+
+            long created = 0, updated = 0, errors = 0;
+
+            // Process new products
+            log.info("Processing {} new products from Tekra", newProducts.size());
+            for (ProductRequestDto product : newProducts) {
+                try {
+                    createProductFromExternal(product, manufacturersMap);
+                    created++;
+                } catch (Exception e) {
+                    errors++;
+                    log.error("Error creating new product {}: {}", product.getId(), e.getMessage());
+                }
+            }
+
+            // Process updates (only update products modified recently)
+            log.info("Processing {} existing products for updates", productsToUpdate.size());
+            for (ProductRequestDto product : productsToUpdate) {
+                try {
+                    Optional<Product> existingProduct = productRepository.findByExternalId(product.getId());
+                    if (existingProduct.isPresent()) {
+                        updateProductFromExternal(existingProduct.get(), product, manufacturersMap);
+                        updated++;
+                    }
+                } catch (Exception e) {
+                    errors++;
+                    log.error("Error updating product {}: {}", product.getId(), e.getMessage());
+                }
+            }
+
+            updateSyncLogSimple(syncLog, LOG_STATUS_SUCCESS, (long) tekraProducts.size(),
+                    created, updated, errors,
+                    String.format("New: %d, Updated: %d, Errors: %d", created, updated, errors),
+                    startTime);
+
+            log.info("Incremental Tekra sync completed - New: {}, Updated: {}, Errors: {}", created, updated, errors);
+
+        } catch (Exception e) {
+            updateSyncLogSimple(syncLog, LOG_STATUS_FAILED, 0, 0, 0, 0, e.getMessage(), startTime);
+            log.error("Error during incremental Tekra sync", e);
+            throw e;
+        }
+    }
+
+    /**
+     * ============ ADMIN ENDPOINTS METHODS ============
+     */
+
+    public int getTekraAllProductsCount() {
+        try {
+            TekraProductFeed feed = tekraApiService.getAllProducts();
+            return feed.getTotalProducts() != null ? feed.getTotalProducts() : 0;
+        } catch (Exception e) {
+            log.error("Error getting all Tekra products count: {}", e.getMessage());
             return 0;
         }
     }
+
+    public int getTekraCategoryProductsCount(String categorySlug) {
+        try {
+            return tekraApiService.getProductCountByCategory(categorySlug);
+        } catch (Exception e) {
+            log.error("Error getting Tekra products count for category {}: {}", categorySlug, e.getMessage());
+            return 0;
+        }
+    }
+
+
 
     // ============ RESULT CLASSES ============
     private static class ChunkResult {

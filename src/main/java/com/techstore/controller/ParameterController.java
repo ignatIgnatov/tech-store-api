@@ -9,6 +9,7 @@ import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -32,7 +33,7 @@ public class ParameterController {
 
     private final ParameterService parameterService;
 
-    @PostMapping
+    @PostMapping(produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<ParameterResponseDto> createParameter(
             @Valid @RequestBody ParameterRequestDto requestDto,
             @RequestParam(defaultValue = "en") String language) {
@@ -42,7 +43,7 @@ public class ParameterController {
         return ResponseEntity.status(HttpStatus.CREATED).body(parameter);
     }
 
-    @PutMapping("/{id}")
+    @PutMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<ParameterResponseDto> updateParameter(
             @PathVariable("id") Long id,
             @Valid @RequestBody ParameterRequestDto requestDto,
@@ -60,7 +61,7 @@ public class ParameterController {
         return ResponseEntity.noContent().build();
     }
 
-    @GetMapping("/category/{categoryId}")
+    @GetMapping(value = "/category/{categoryId}", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<List<ParameterResponseDto>> getParametersByCategory(
             @PathVariable @NotNull Long categoryId,
             @RequestParam(defaultValue = "en") String language) {
@@ -70,7 +71,7 @@ public class ParameterController {
         return ResponseEntity.ok(parameters);
     }
 
-    @GetMapping("/{id}")
+    @GetMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<ParameterResponseDto> getParameterById(
             @PathVariable @NotNull Long id,
             @RequestParam(defaultValue = "en") String language) {
@@ -81,7 +82,7 @@ public class ParameterController {
     }
 
     @Hidden
-    @GetMapping("/all")
+    @GetMapping(value = "/all", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<List<ParameterResponseDto>> getAllParameters(
             @RequestParam(defaultValue = "en") String language
     ) {

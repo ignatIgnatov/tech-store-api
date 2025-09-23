@@ -41,13 +41,19 @@ spring:
     # Jackson Configuration
     jackson:
         serialization:
-            fail-on-empty-beans: false
             write-dates-as-timestamps: false
+            fail-on-empty-beans: false
         deserialization:
             fail-on-unknown-properties: false
-        time-zone: UTC
-        # Add these for better LocalDateTime handling
         default-property-inclusion: non_null
+        mvc:
+            contentnegotiation:
+                favor-format: false
+                favor-path-extension: false
+                favor-parameter: false
+                media-types:
+                    json: application/json
+                    xml: application/xml
 
     # Multipart Configuration (for file uploads)
     servlet:

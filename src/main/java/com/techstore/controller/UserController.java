@@ -11,6 +11,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -36,7 +37,7 @@ public class UserController {
 
     // ===== ADMIN ENDPOINTS =====
 
-    @GetMapping
+    @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
     public ResponseEntity<Page<UserResponseDTO>> getAllUsers(
             @RequestParam(defaultValue = "0") int page,
@@ -52,21 +53,21 @@ public class UserController {
         return ResponseEntity.ok(users);
     }
 
-    @GetMapping("/{id}")
+    @GetMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
     public ResponseEntity<UserResponseDTO> getUserById(@PathVariable Long id) {
         UserResponseDTO user = userService.getUserById(id);
         return ResponseEntity.ok(user);
     }
 
-    @GetMapping("/username/{username}")
+    @GetMapping(value = "/username/{username}", produces = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
     public ResponseEntity<UserResponseDTO> getUserByUsername(@PathVariable String username) {
         UserResponseDTO user = userService.getUserByUsername(username);
         return ResponseEntity.ok(user);
     }
 
-    @PostMapping
+    @PostMapping(produces = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     public ResponseEntity<UserResponseDTO> createUser(@Valid @RequestBody UserRequestDTO requestDTO) {
         log.info("Creating user with username: {}", requestDTO.getUsername());
@@ -74,7 +75,7 @@ public class UserController {
         return ResponseEntity.status(HttpStatus.CREATED).body(createdUser);
     }
 
-    @PutMapping("/{id}")
+    @PutMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
     public ResponseEntity<UserResponseDTO> updateUser(
             @PathVariable Long id,
@@ -85,7 +86,7 @@ public class UserController {
         return ResponseEntity.ok(updatedUser);
     }
 
-    @DeleteMapping("/{id}")
+    @DeleteMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     public ResponseEntity<Void> deleteUser(@PathVariable Long id) {
         log.info("Deleting user with id: {}", id);
@@ -95,14 +96,14 @@ public class UserController {
 
     // ===== PROFILE ENDPOINTS =====
 
-    @GetMapping("/profile")
+    @GetMapping(value = "/profile", produces = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<UserResponseDTO> getCurrentUserProfile() {
         // Implementation would get current authenticated user
         return ResponseEntity.ok(new UserResponseDTO());
     }
 
-    @PutMapping("/profile")
+    @PutMapping(value = "/profile", produces = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<UserResponseDTO> updateCurrentUserProfile(
             @Valid @RequestBody UserRequestDTO requestDTO) {
@@ -110,7 +111,7 @@ public class UserController {
         return ResponseEntity.ok(new UserResponseDTO());
     }
 
-    @PutMapping("/profile/password")
+    @PutMapping(value = "/profile/password", produces = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<String> changePassword(
             @RequestParam String currentPassword,

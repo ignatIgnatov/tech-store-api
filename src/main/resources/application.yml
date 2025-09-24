@@ -4,15 +4,15 @@ spring:
 
     # Database Configuration
     datasource:
-        url: jdbc:postgresql://postgres:5432/techstore
-        username: techstore_user
-        password: techstore_password
+        url: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+        username: ${POSTGRES_USER}
+        password: ${POSTGRES_PASSWORD}
         driver-class-name: org.postgresql.Driver
 
     # JPA/Hibernate Configuration
     jpa:
         hibernate:
-            ddl-auto: update # Use 'update' in production / 'create-drop in dev'
+            ddl-auto: update
         show-sql: false
         properties:
             hibernate:
@@ -27,11 +27,11 @@ spring:
                     backend:
                         type: lucene
                         directory:
-                            root: /tmp/lucene/indexes
+                            root: ${SPRING_JPA_PROPERTIES_HIBERNATE_SEARCH_BACKEND_DIRECTORY_ROOT}
 
     # Connection Pool Configuration
     hikari:
-        maximum-pool-size: 3  # Увеличи значително
+        maximum-pool-size: 3
         minimum-idle: 10
         connection-timeout: 10000
         idle-timeout: 300000
@@ -63,20 +63,20 @@ spring:
 
     # Profile Configuration
     profiles:
-        active: production
+        active: ${SPRING_PROFILES_ACTIVE}
 
 aws:
     s3:
-        access-key: ${AWS_ACCESS_KEY:aws-s3-key}
-        secret-key: ${AWS_SECRET_KEY:aws-s3-secret-key}
-        bucket-name: ${AWS_S3_BUCKET_NAME:aws-s3-name}
-        region: ${AWS_S3_REGION:us-east-1}
+        access-key: ${AWS_ACCESS_KEY}
+        secret-key: ${AWS_SECRET_KEY}
+        bucket-name: ${AWS_S3_BUCKET_NAME}
+        region: ${AWS_S3_REGION}
 
 # ADD THIS NEW SECTION FOR TEKRA API
 tekra:
     api:
-        base-url: https://tekra.bg/shop/api
-        access-token: ZWZiOTU1OGE2ODcxMDgxMDAzNmVjMzIwMGYzMGI5MTdiZTYxNGM5MGFkZTA0MmQxZDZlNDI0NjJlMjA4MTkzMmUwYzFjZThhYTc1YTI3N2Q5ZmNiOTJlNjJmYjc1YzkxMjE0NzRkZjBkODBkNTg3ZWEwYTFlMmEzNzdhMjA0NDBXZHNvY0VuKy80elRHT2dyK2xsMzJOTTdEeC9hbTA4S1VzVWJ3WnNxWUc4PQ==
+        base-url: ${TEKRA_API_BASE_URL}
+        access-token: ${TEKRA_API_ACCESS_TOKEN}
         enabled: true
         timeout-seconds: 30
         max-retries: 3
@@ -97,8 +97,6 @@ server:
 # LOGGING CONFIGURATION
 logging:
     level:
-        #        com.techstore.service.ProductService: INFO
-        #        com.techstore.mapper: DEBUG
         org.hibernate.engine.jdbc.connections.internal.DriverManagerConnectionProviderImpl: WARN
         org.hibernate.SQL: WARN
         org.hibernate.type.descriptor.sql: WARN
@@ -108,13 +106,11 @@ logging:
         org.springframework.security.web.FilterChainProxy: WARN
         org.hibernate.type.descriptor.sql.BasicBinder: ERROR
         com.techstore: WARN
-        # Add debug logging for Tekra if needed
-        # com.techstore.service.TekraApiService: DEBUG
     pattern:
         console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
         file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
     file:
-        name: logs/techstore.log
+        name: ${LOGGING_FILE_NAME}
     logback:
         rollingpolicy:
             max-file-size: 10MB
@@ -123,23 +119,21 @@ logging:
 
 # Application Specific Configuration
 app:
-    # Error handling configuration
     error:
-        include-stack-trace: false  # Set to true in development
+        include-stack-trace: false
         include-root-cause: true
         max-error-details: 10
     sync:
         enabled: true
-        cron: "0 0 2 * * *"  # 2:00 AM всеки ден
-        batch-size: 30       # Chunks от 30 записа
+        cron: "0 0 3 * * *"
+        batch-size: 30
         max-chunk-duration-minutes: 5
 
         tekra:
             enabled: true
             wildlife-surveillance-only: true
-            auto-sync: false # Set to true to include in scheduled sync
-            sync-cron: "0 30 3 * * ?" # Run Tekra sync at 3:30 AM if auto-sync is enabled
-            # Add surveillance categories configuration
+            auto-sync: false
+            sync-cron: "0 0 2 * * ?"
             surveillance-categories:
                 - videonablyudenie
                 - ip-kameri
@@ -160,8 +154,8 @@ app:
             - parameters
             - productsByCategory
             - parameterOptions
-            - tekraProducts # New cache for Tekra products
-            - tekraCategories # New cache for Tekra categories
+            - tekraProducts
+            - tekraCategories
         caffeine:
             spec: maximumSize=10000,expireAfterWrite=1h,recordStats
 
@@ -172,21 +166,21 @@ app:
 
     # JWT Configuration
     jwt:
-        secret: ${JWT_SECRET:techStoreSecretKeyThatShouldBeLongAndSecure123456789}
-        expiration: 86400000 # 24 hours in milliseconds
-        refresh-expiration: 604800000 # 7 days in milliseconds
+        secret: ${JWT_SECRET}
+        expiration: ${JWT_EXPIRATION}
+        refresh-expiration: ${JWT_REFRESH_EXPIRATION}
 
     # File Upload Configuration
     upload:
-        directory: ${UPLOAD_DIR:./uploads}
-        max-file-size: 10485760 # 10MB
+        directory: ${UPLOAD_DIR}
+        max-file-size: 10485760
         allowed-extensions: jpg,jpeg,png,gif,webp
 
     # Admin Configuration
     admin:
-        default-username: admin
-        default-password: ${ADMIN_PASSWORD:admin123}
-        default-email: admin@techstore.com
+        default-username: ${ADMIN_USERNAME}
+        default-password: ${ADMIN_PASSWORD}
+        default-email: ${ADMIN_EMAIL}
 
     # Pagination Configuration
     pagination:
@@ -209,15 +203,18 @@ springdoc:
         path: /v3/api-docs
     swagger-ui:
         path: /swagger-ui.html
+        enabled: true
+        operations-sorter: method
+        tags-sorter: alpha
 
 vali:
     api:
-        base-url: https://www.vali.bg/api/v1
-        token: v8GPrGyODgy6Em8VwcYTXB6WJvjYG7qAgYVSmNyMQGWdgT4lVCGAh1a1tR5K
+        base-url: ${VALI_API_BASE_URL}
+        token: ${VALI_API_TOKEN}
         timeout: 30000
         retry-attempts: 3
         retry-delay: 1000
 
 excluded:
     categories:
-        external-ids: 528,538,552,622,665,667,650,651,621,594,648,664,663,715,558,590,638,646,644,696,647,574,628,547,533,596,556,582,588,592,649
+        external-ids: ${VALI_EXCLUDED_CATEGORIES_IDS}

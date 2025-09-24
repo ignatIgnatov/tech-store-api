@@ -3,6 +3,7 @@ package com.techstore.controller;
 import com.techstore.service.SyncService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -19,7 +20,7 @@ public class TekraController {
 
     private final SyncService syncService;
 
-    @PostMapping("/categories")
+    @PostMapping(value = "/categories", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Map<String, Object>> syncCategories() {
         try {
             long startTime = System.currentTimeMillis();
@@ -43,7 +44,7 @@ public class TekraController {
         }
     }
 
-    @PostMapping("/manufacturers")
+    @PostMapping(value = "/manufacturers", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Map<String, Object>> syncManufacturers() {
         try {
             long startTime = System.currentTimeMillis();
@@ -67,7 +68,7 @@ public class TekraController {
         }
     }
 
-    @PostMapping("/parameters")
+    @PostMapping(value = "/parameters", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Map<String, Object>> syncParameters() {
         try {
             long startTime = System.currentTimeMillis();
@@ -91,7 +92,7 @@ public class TekraController {
         }
     }
 
-    @PostMapping("/products")
+    @PostMapping(value = "/products", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Map<String, Object>> syncProducts() {
         try {
             long startTime = System.currentTimeMillis();
@@ -115,7 +116,7 @@ public class TekraController {
         }
     }
 
-    @PostMapping("/complete")
+    @PostMapping(value = "/complete", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Map<String, Object>> syncComplete() {
         try {
             long startTime = System.currentTimeMillis();

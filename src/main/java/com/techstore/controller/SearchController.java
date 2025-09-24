@@ -4,6 +4,7 @@ import com.techstore.service.SearchService;
 import io.swagger.v3.oas.annotations.Hidden;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,7 +24,7 @@ public class SearchController {
 
     private final SearchService searchService;
 
-    @GetMapping("/suggestions")
+    @GetMapping(value = "/suggestions", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<List<String>> getSuggestions(
             @RequestParam String q,
             @RequestParam(required = false) Long categoryId,

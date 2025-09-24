@@ -4,7 +4,9 @@ import com.techstore.dto.external.ImageDto;
 import com.techstore.dto.request.CategoryRequestFromExternalDto;
 import com.techstore.dto.request.DocumentRequestDto;
 import com.techstore.dto.request.ManufacturerRequestDto;
+import com.techstore.dto.request.ParameterOptionRequestDto;
 import com.techstore.dto.request.ParameterRequestDto;
+import com.techstore.dto.request.ParameterValueRequestDto;
 import com.techstore.dto.request.ProductRequestDto;
 import com.techstore.entity.Category;
 import com.techstore.entity.Manufacturer;
@@ -203,28 +205,197 @@ public class SyncService {
         }
     }
 
-    // ============ PARAMETERS SYNC ============
+    private void syncParameterOptions(Parameter parameter, List<ParameterOptionRequestDto> externalOptions) {
+        if (externalOptions == null || externalOptions.isEmpty()) {
+            return;
+        }
+
+        // Get existing options for this parameter
+        Map<Long, ParameterOption> existingOptions = parameterOptionRepository
+                .findByParameterIdOrderByOrderAsc(parameter.getId())
+                .stream()
+                .filter(option -> option.getExternalId() != null)
+                .collect(Collectors.toMap(ParameterOption::getExternalId, option -> option));
+
+        List<ParameterOption> optionsToSave = new ArrayList<>();
+
+        for (ParameterOptionRequestDto extOption : externalOptions) {
+            ParameterOption option = existingOptions.get(extOption.getId());
+
+            if (option == null) {
+                // Create new option
+                option = createParameterOptionFromExternal(extOption, parameter);
+            } else {
+                // Update existing option
+                updateParameterOptionFromExternal(option, extOption);
+            }
+
+            if (option != null) {
+                optionsToSave.add(option);
+            }
+        }
+
+        if (!optionsToSave.isEmpty()) {
+            parameterOptionRepository.saveAll(optionsToSave);
+            log.debug("Saved {} options for parameter: {}", optionsToSave.size(), parameter.getNameBg());
+        }
+    }
+
+    private ParameterOption createParameterOptionFromExternal(ParameterOptionRequestDto extOption, Parameter parameter) {
+        try {
+            ParameterOption option = new ParameterOption();
+            option.setExternalId(extOption.getId());
+            option.setParameter(parameter);
+            option.setOrder(extOption.getOrder());
+
+            if (extOption.getName() != null) {
+                extOption.getName().forEach(name -> {
+                    if ("bg".equals(name.getLanguageCode())) {
+                        option.setNameBg(name.getText());
+                    } else if ("en".equals(name.getLanguageCode())) {
+                        option.setNameEn(name.getText());
+                    }
+                });
+            }
+
+            return option;
+        } catch (Exception e) {
+            log.error("Error creating parameter option from external data: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private void updateParameterOptionFromExternal(ParameterOption option, ParameterOptionRequestDto extOption) {
+        try {
+            option.setOrder(extOption.getOrder());
+
+            if (extOption.getName() != null) {
+                extOption.getName().forEach(name -> {
+                    if ("bg".equals(name.getLanguageCode())) {
+                        option.setNameBg(name.getText());
+                    } else if ("en".equals(name.getLanguageCode())) {
+                        option.setNameEn(name.getText());
+                    }
+                });
+            }
+        } catch (Exception e) {
+            log.error("Error updating parameter option: {}", e.getMessage());
+        }
+    }
+
+    private void syncValiParameterOptions(Parameter parameter, List<ParameterOptionRequestDto> externalOptions) {
+        if (externalOptions == null || externalOptions.isEmpty()) {
+            log.debug("No options provided for parameter: {}", parameter.getNameBg());
+            return;
+        }
+
+        // Get existing options for this parameter
+        Map<Long, ParameterOption> existingOptions = parameterOptionRepository
+                .findByParameterIdOrderByOrderAsc(parameter.getId())
+                .stream()
+                .filter(option -> option.getExternalId() != null)
+                .collect(Collectors.toMap(ParameterOption::getExternalId, option -> option));
+
+        List<ParameterOption> optionsToSave = new ArrayList<>();
+        int created = 0, updated = 0;
+
+        for (ParameterOptionRequestDto extOption : externalOptions) {
+            ParameterOption option = existingOptions.get(extOption.getId());
+
+            if (option == null) {
+                // Create new option
+                option = createValiParameterOptionFromExternal(extOption, parameter);
+                if (option != null) {
+                    created++;
+                }
+            } else {
+                // Update existing option
+                updateValiParameterOptionFromExternal(option, extOption);
+                updated++;
+            }
+
+            if (option != null) {
+                optionsToSave.add(option);
+            }
+        }
+
+        if (!optionsToSave.isEmpty()) {
+            parameterOptionRepository.saveAll(optionsToSave);
+            log.debug("Saved {} options for parameter: {} (created: {}, updated: {})",
+                    optionsToSave.size(), parameter.getNameBg(), created, updated);
+        }
+    }
+
+    private ParameterOption createValiParameterOptionFromExternal(ParameterOptionRequestDto extOption, Parameter parameter) {
+        try {
+            ParameterOption option = new ParameterOption();
+            option.setExternalId(extOption.getId());
+            option.setParameter(parameter);
+            option.setOrder(extOption.getOrder());
+
+            if (extOption.getName() != null) {
+                extOption.getName().forEach(name -> {
+                    if ("bg".equals(name.getLanguageCode())) {
+                        option.setNameBg(name.getText());
+                    } else if ("en".equals(name.getLanguageCode())) {
+                        option.setNameEn(name.getText());
+                    }
+                });
+            }
+
+            return option;
+        } catch (Exception e) {
+            log.error("Error creating Vali parameter option from external data: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private void updateValiParameterOptionFromExternal(ParameterOption option, ParameterOptionRequestDto extOption) {
+        try {
+            option.setOrder(extOption.getOrder());
+
+            if (extOption.getName() != null) {
+                extOption.getName().forEach(name -> {
+                    if ("bg".equals(name.getLanguageCode())) {
+                        option.setNameBg(name.getText());
+                    } else if ("en".equals(name.getLanguageCode())) {
+                        option.setNameEn(name.getText());
+                    }
+                });
+            }
+        } catch (Exception e) {
+            log.error("Error updating Vali parameter option: {}", e.getMessage());
+        }
+    }
+
     @Transactional
     public void syncParameters() {
         SyncLog syncLog = createSyncLogSimple("PARAMETERS");
         long startTime = System.currentTimeMillis();
 
         try {
-            log.info("Starting chunked parameters synchronization");
+            log.info("Starting Vali parameters synchronization with options");
 
             List<Category> categories = categoryRepository.findAll();
             long totalProcessed = 0, created = 0, updated = 0, errors = 0;
+            long optionsCreated = 0, optionsUpdated = 0;
 
             for (Category category : categories) {
                 try {
                     Map<String, Parameter> existingParameters = cachedLookupService.getParametersByCategory(category);
-
                     List<ParameterRequestDto> externalParameters = valiApiService.getParametersByCategory(category.getExternalId());
 
-                    List<Parameter> toSave = new ArrayList<>();
+                    if (externalParameters.isEmpty()) {
+                        log.debug("No parameters found for category: {}", category.getNameBg());
+                        continue;
+                    }
 
+                    List<Parameter> parametersToSave = new ArrayList<>();
+
+                    // First pass: Create/update parameters
                     for (ParameterRequestDto extParam : externalParameters) {
-                        Parameter parameter = existingParameters.get(extParam.getId());
+                        Parameter parameter = existingParameters.get(extParam.getId().toString());
+
                         if (parameter == null) {
                             parameter = parameterRepository
                                     .findByExternalIdAndCategoryId(extParam.getId(), category.getId())
@@ -235,12 +406,29 @@ public class SyncService {
                             updated++;
                         }
 
-                        toSave.add(parameter);
-                        existingParameters.put(String.valueOf(parameter.getExternalId()), parameter); // Обновяване на кеша
+                        parametersToSave.add(parameter);
                     }
 
-                    if (!toSave.isEmpty()) {
-                        parameterRepository.saveAll(toSave);
+                    // Save parameters first
+                    if (!parametersToSave.isEmpty()) {
+                        parameterRepository.saveAll(parametersToSave);
+
+                        // Second pass: Create/update parameter options
+                        for (int i = 0; i < parametersToSave.size(); i++) {
+                            Parameter parameter = parametersToSave.get(i);
+                            ParameterRequestDto extParam = externalParameters.get(i);
+
+                            try {
+                                // Only sync options for Vali API parameters (have external_id)
+                                if (parameter.getExternalId() != null && extParam.getOptions() != null) {
+                                    syncValiParameterOptions(parameter, extParam.getOptions());
+                                }
+                            } catch (Exception e) {
+                                log.error("Error syncing options for parameter {}: {}",
+                                        parameter.getNameBg(), e.getMessage());
+                                errors++;
+                            }
+                        }
                     }
 
                     totalProcessed += externalParameters.size();
@@ -251,16 +439,98 @@ public class SyncService {
                 }
             }
 
-            updateSyncLogSimple(syncLog, LOG_STATUS_SUCCESS, totalProcessed, created, updated, errors,
-                    errors > 0 ? String.format("Completed with %d errors", errors) : null, startTime);
+            String message = String.format("Vali parameters processed: %d, created: %d, updated: %d",
+                    totalProcessed, created, updated);
+            if (errors > 0) {
+                message += String.format(", errors: %d", errors);
+            }
 
-            log.info("Parameters synchronization completed - Processed: {}, Created: {}, Updated: {}, Errors: {}",
+            updateSyncLogSimple(syncLog, LOG_STATUS_SUCCESS, totalProcessed, created, updated, errors,
+                    errors > 0 ? message : null, startTime);
+
+            log.info("Vali parameters synchronization completed - Processed: {}, Created: {}, Updated: {}, Errors: {}",
                     totalProcessed, created, updated, errors);
 
         } catch (Exception e) {
             updateSyncLogSimple(syncLog, LOG_STATUS_FAILED, 0, 0, 0, 0, e.getMessage(), startTime);
-            log.error("Error during parameters synchronization", e);
+            log.error("Error during Vali parameters synchronization", e);
             throw e;
+        }
+    }
+
+    private void setParametersToProduct(Product product, ProductRequestDto extProduct) {
+        if (extProduct.getParameters() == null || product.getCategory() == null) {
+            product.setProductParameters(new HashSet<>());
+            return;
+        }
+
+        Set<ProductParameter> newProductParameters = new HashSet<>();
+        int mappedCount = 0;
+        int notFoundCount = 0;
+
+        for (ParameterValueRequestDto paramValue : extProduct.getParameters()) {
+            try {
+                // Find parameter - try cache first, then repository
+                Optional<Parameter> parameterOpt = cachedLookupService
+                        .getParameter(paramValue.getParameterId(), product.getCategory().getId());
+
+                if (parameterOpt.isEmpty()) {
+                    parameterOpt = parameterRepository.findByExternalIdAndCategoryId(
+                            paramValue.getParameterId(), product.getCategory().getId());
+
+                    if (parameterOpt.isEmpty()) {
+                        log.debug("Parameter not found: parameterId={}, categoryId={}, productId={}",
+                                paramValue.getParameterId(), product.getCategory().getId(), product.getExternalId());
+                        notFoundCount++;
+                        continue;
+                    }
+                }
+
+                Parameter parameter = parameterOpt.get();
+
+                // Find parameter option - try cache first, then repository
+                Optional<ParameterOption> optionOpt = cachedLookupService
+                        .getParameterOption(paramValue.getOptionId(), parameter.getId());
+
+                if (optionOpt.isEmpty()) {
+                    // Try to find by external ID
+                    optionOpt = parameterOptionRepository
+                            .findByParameterIdOrderByOrderAsc(parameter.getId())
+                            .stream()
+                            .filter(opt -> paramValue.getOptionId().equals(opt.getExternalId()))
+                            .findFirst();
+
+                    if (optionOpt.isEmpty()) {
+                        log.debug("Parameter option not found: optionId={}, parameterId={}, productId={}",
+                                paramValue.getOptionId(), parameter.getId(), product.getExternalId());
+                        notFoundCount++;
+                        continue;
+                    }
+                }
+
+                ParameterOption option = optionOpt.get();
+
+                // Create ProductParameter
+                ProductParameter pp = new ProductParameter();
+                pp.setProduct(product);
+                pp.setParameter(parameter);
+                pp.setParameterOption(option);
+                newProductParameters.add(pp);
+
+                mappedCount++;
+
+            } catch (Exception e) {
+                log.error("Error mapping parameter for product {}: {}",
+                        product.getExternalId(), e.getMessage());
+                notFoundCount++;
+            }
+        }
+
+        product.setProductParameters(newProductParameters);
+
+        if (mappedCount > 0 || notFoundCount > 0) {
+            log.debug("Product {} parameter mapping: {} mapped, {} not found",
+                    product.getExternalId(), mappedCount, notFoundCount);
         }
     }
 
@@ -1893,34 +2163,6 @@ public class SyncService {
             });
         }
     }
-
-    private void setParametersToProduct(Product product, ProductRequestDto extProduct) {
-        if (extProduct.getParameters() != null && product.getCategory() != null) {
-
-            Set<ProductParameter> newProductParameters = extProduct.getParameters().stream()
-                    .map(paramValue -> cachedLookupService
-                            .getParameter(paramValue.getParameterId(), product.getCategory().getId())
-                            .flatMap(parameter -> cachedLookupService
-                                    .getParameterOption(paramValue.getOptionId(), parameter.getId())
-                                    .map(option -> {
-                                        ProductParameter pp = new ProductParameter();
-                                        pp.setProduct(product);
-                                        pp.setParameter(parameter);
-                                        pp.setParameterOption(option);
-                                        return pp;
-                                    })
-                            )
-                    )
-                    .flatMap(Optional::stream)
-                    .collect(Collectors.toSet());
-
-            product.setProductParameters(newProductParameters);
-
-        } else {
-            product.setProductParameters(new HashSet<>());
-        }
-    }
-
 
     private String generateSlug(String name) {
         return name == null ? null :

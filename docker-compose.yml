@@ -4,14 +4,13 @@ services:
     image: postgres:15-alpine
     container_name: techstore-postgres
     environment:
-      POSTGRES_DB: techstore
-      POSTGRES_USER: techstore_user
-      POSTGRES_PASSWORD: techstore_password
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-#      - ./init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh
     networks:
       - techstore-network
     healthcheck:
@@ -20,40 +19,21 @@ services:
       timeout: 10s
       retries: 3
 
-  # Redis for Caching (Optional)
-#  redis:
-#    image: redis:7-alpine
-#    container_name: techstore-redis
-#    ports:
-#      - "6379:6379"
-#    volumes:
-#      - redis_data:/data
-#    networks:
-#      - techstore-network
-#    healthcheck:
-#      test: ["CMD", "redis-cli", "ping"]
-#      interval: 30s
-#      timeout: 3s
-#      retries: 3
-
   # Spring Boot Application
   app:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: techstore-api
-    environment:
-      SPRING_PROFILES_ACTIVE: production
-      DATABASE_URL: jdbc:postgresql://postgres:5432/techstore
-      DATABASE_USERNAME: techstore_user
-      DATABASE_PASSWORD: techstore_password
-      JWT_SECRET: ${JWT_SECRET:-techStoreJwtSecretKey123456789}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+    image: ludogoriesoft/techstore-api
     ports:
       - "8080:8080"
+    env_file:
+      - .env
     volumes:
       - uploads_data:/app/uploads
-      - ./lucene-indexes:/tmp/lucene/indexes
+      - /tmp/lucene:/tmp/lucene:rw
+      - /tmp/techstore-logs:/tmp/techstore-logs:rw
     depends_on:
       postgres:
         condition: service_healthy
@@ -67,25 +47,8 @@ services:
       start_period: 60s
     restart: unless-stopped
 
-  # Nginx Reverse Proxy (Optional)
-#  nginx:
-#    image: nginx:alpine
-#    container_name: techstore-nginx
-#    ports:
-#      - "80:80"
-#      - "443:443"
-#    volumes:
-#      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
-#      - ./nginx/ssl:/etc/nginx/ssl
-#    depends_on:
-#      - app
-#    networks:
-#      - techstore-network
-#    restart: unless-stopped
-
 volumes:
   postgres_data:
-  redis_data:
   uploads_data:
 
 networks:

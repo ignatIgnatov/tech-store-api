@@ -1,60 +1,56 @@
 services:
-  # PostgreSQL Database for Development
-  postgres-dev:
+  # PostgreSQL Database
+  postgres:
     image: postgres:15-alpine
-    container_name: techstore-postgres-dev
+    container_name: techstore-postgres
     environment:
-      POSTGRES_DB: techstore_dev
-      POSTGRES_USER: techstore_user
-      POSTGRES_PASSWORD: techstore_password
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
-      - "5433:5432"
+      - "5432:5432"
     volumes:
-      - postgres_dev_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     networks:
-      - techstore-dev-network
+      - techstore-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U techstore_user -d techstore"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-  # H2 Database Console (Alternative for development)
-  h2-console:
-    image: oscarfonts/h2:latest
-    container_name: techstore-h2-console
-    ports:
-      - "8082:8082"
-      - "9092:9092"
-    volumes:
-      - h2_data:/opt/h2-data
-    networks:
-      - techstore-dev-network
-
-  # Application in Development Mode
-  app-dev:
+  # Spring Boot Application
+  app:
     build:
       context: .
-      dockerfile: Dockerfile.dev
-    container_name: techstore-api-dev
-    environment:
-      SPRING_PROFILES_ACTIVE: development
-      DATABASE_URL: jdbc:postgresql://postgres-dev:5432/techstore_dev
-      DATABASE_USERNAME: techstore_user
-      DATABASE_PASSWORD: techstore_password
+      dockerfile: Dockerfile
+    container_name: techstore-api
+    image: ludogoriesoft/techstore-api
     ports:
-      - "8081:8080"
-      - "5005:5005"  # Debug port
+      - "8080:8080"
+    env_file:
+      - .env
     volumes:
-      - .:/app
-      - maven_cache:/root/.m2
+      - ./lucene-indexes:/app/lucene-indexes
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
     depends_on:
-      - postgres-dev
+      postgres:
+        condition: service_healthy
     networks:
-      - techstore-dev-network
-    command: >
-      sh -c "mvn spring-boot:run -Dspring-boot.run.jvmArguments='-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005'"
+      - techstore-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
 
 volumes:
-  postgres_dev_data:
-  h2_data:
-  maven_cache:
+  postgres_data:
+  uploads_data:
 
 networks:
-  techstore-dev-network:
+  techstore-network:
     driver: bridge

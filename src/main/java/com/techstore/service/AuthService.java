@@ -482,7 +482,7 @@ public class AuthService {
                 registerRequest.getFirstName().trim() : null);
         user.setLastName(StringUtils.hasText(registerRequest.getLastName()) ?
                 registerRequest.getLastName().trim() : null);
-        user.setRole(User.Role.USER); // Default role for registration
+        user.setRole(User.Role.USER);
         user.setActive(true);
         user.setEmailVerified(false);
 

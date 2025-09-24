@@ -22,33 +22,33 @@ public class OpenApiConfig {
     @Bean
     public OpenAPI customOpenAPI() {
         return new OpenAPI()
-                .openapi("3.0.1");
-//                .info(new Info()
-//                        .title("Tech Store API")
-//                        .version("1.0.0")
-//                        .description("REST API for Tech Store application with comprehensive product management, admin panel, and advanced features including product specifications and flexible discount system.")
-//                        .contact(new Contact()
-//                                .name("Tech Store Team")
-//                                .email("developers@techstore.com")
-//                                .url("https://techstore.com")
-//                        )
-//                        .license(new License()
-//                                .name("MIT License")
-//                                .url("https://opensource.org/licenses/MIT")))
-//                .servers(List.of(
-//                        new Server()
-//                                .url("http://localhost:" + serverPort)
-//                                .description("Development Server"),
-//                        new Server()
-//                                .url("https://api.techstore.com")
-//                                .description("Production Server")))
-//                .addSecurityItem(new SecurityRequirement().addList("bearerAuth"))
-//                .components(new io.swagger.v3.oas.models.Components()
-//                        .addSecuritySchemes("bearerAuth",
-//                                new SecurityScheme()
-//                                        .type(SecurityScheme.Type.HTTP)
-//                                        .scheme("bearer")
-//                                        .bearerFormat("JWT")
-//                                        .description("JWT token authentication")));
+                .openapi("3.0.1")
+                .info(new Info()
+                        .title("Tech Store API")
+                        .version("1.0.0")
+                        .description("REST API for Tech Store application with comprehensive product management, admin panel, and advanced features including product specifications and flexible discount system.")
+                        .contact(new Contact()
+                                .name("Tech Store Team")
+                                .email("developers@techstore.com")
+                                .url("https://techstore.com")
+                        )
+                        .license(new License()
+                                .name("MIT License")
+                                .url("https://opensource.org/licenses/MIT")))
+                .servers(List.of(
+                        new Server()
+                                .url("http://localhost:" + serverPort)
+                                .description("Development Server"),
+                        new Server()
+                                .url("https://api.techstore.com")
+                                .description("Production Server")))
+                .addSecurityItem(new SecurityRequirement().addList("bearerAuth"))
+                .components(new io.swagger.v3.oas.models.Components()
+                        .addSecuritySchemes("bearerAuth",
+                                new SecurityScheme()
+                                        .type(SecurityScheme.Type.HTTP)
+                                        .scheme("bearer")
+                                        .bearerFormat("JWT")
+                                        .description("JWT token authentication")));
     }
 }

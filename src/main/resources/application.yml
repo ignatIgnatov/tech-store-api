@@ -200,6 +200,7 @@ management:
 # OpenAPI/Swagger Configuration
 springdoc:
     api-docs:
+        version: OPENAPI_3_0
         path: /v3/api-docs
     swagger-ui:
         path: /swagger-ui.html

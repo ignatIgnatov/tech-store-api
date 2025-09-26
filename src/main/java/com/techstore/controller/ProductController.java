@@ -23,7 +23,6 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -68,7 +67,7 @@ public class ProductController {
 
     @GetMapping(value = "/{id}")
     @Operation(summary = "Get product by ID", description = "Retrieve detailed product information")
-    public ResponseEntity<ProductResponseDTO> getProductById(@PathVariable Long id,  @RequestParam(defaultValue = "en") String language) {
+    public ResponseEntity<ProductResponseDTO> getProductById(@PathVariable Long id, @RequestParam(defaultValue = "en") String language) {
         ProductResponseDTO product = productService.getProductById(id, language);
         return ResponseEntity.ok(product);
     }

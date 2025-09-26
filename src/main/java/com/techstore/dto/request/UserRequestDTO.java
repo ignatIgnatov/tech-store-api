@@ -40,8 +40,4 @@ public class UserRequestDTO {
     private String role;
 
     private Boolean active = true;
-
-    private Set<CartItemRequestDto> cartItems;
-
-    private List<Long> userFavorites;
 }

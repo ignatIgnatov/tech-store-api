@@ -4,7 +4,9 @@ import com.techstore.dto.UserResponseDTO;
 import com.techstore.dto.request.CartItemRequestDto;
 import com.techstore.dto.request.LoginRequestDTO;
 import com.techstore.dto.request.UserRequestDTO;
+import com.techstore.dto.response.CartItemResponseDto;
 import com.techstore.dto.response.LoginResponseDTO;
+import com.techstore.dto.response.UserFavoriteResponseDto;
 import com.techstore.entity.CartItem;
 import com.techstore.entity.Product;
 import com.techstore.entity.User;
@@ -15,7 +17,6 @@ import com.techstore.exception.DuplicateResourceException;
 import com.techstore.exception.InvalidCredentialsException;
 import com.techstore.exception.InvalidTokenException;
 import com.techstore.exception.ValidationException;
-import com.techstore.repository.CartItemRepository;
 import com.techstore.repository.UserRepository;
 import com.techstore.util.ExceptionHelper;
 import com.techstore.util.JwtUtil;
@@ -34,6 +35,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -50,12 +53,14 @@ public class AuthService {
     private final AuthenticationManager authenticationManager;
     private final JwtUtil jwtUtil;
     private final ProductService productService;
+    private final CartService cartService;
+    private final UserFavoriteService userFavoriteService;
 
     private static final Pattern EMAIL_PATTERN = Pattern.compile(
             "^[A-Za-z0-9+_.-]+@([A-Za-z0-9.-]+\\.[A-Za-z]{2,})$"
     );
 
-    public LoginResponseDTO login(LoginRequestDTO loginRequest) {
+    public LoginResponseDTO login(LoginRequestDTO loginRequest, String lang) {
         log.info("Login attempt for user: {}", loginRequest.getUsernameOrEmail());
 
         String context = ExceptionHelper.createErrorContext(
@@ -85,12 +90,16 @@ public class AuthService {
                 // Update last login timestamp
                 updateLastLogin(user);
 
+                processCartItems(loginRequest, user);
+                processFavorites(loginRequest, user);
+                userRepository.save(user);
+
                 log.info("User {} logged in successfully", user.getUsername());
 
                 return LoginResponseDTO.builder()
                         .token(token)
                         .type("Bearer")
-                        .user(convertToUserResponseDTO(user))
+                        .user(convertToUserResponseDTO(user, lang))
                         .build();
 
             } catch (BadCredentialsException e) {
@@ -112,7 +121,7 @@ public class AuthService {
         }, context);
     }
 
-    public UserResponseDTO register(UserRequestDTO registerRequest) {
+    public UserResponseDTO register(UserRequestDTO registerRequest, String lang) {
         log.info("Registration attempt for user: {}", registerRequest.getUsername());
 
         String context = ExceptionHelper.createErrorContext(
@@ -133,7 +142,7 @@ public class AuthService {
             sendVerificationEmailSafely(user);
 
             log.info("User {} registered successfully", user.getUsername());
-            return convertToUserResponseDTO(user);
+            return convertToUserResponseDTO(user, lang);
 
         }, context);
     }
@@ -162,7 +171,7 @@ public class AuthService {
         }
     }
 
-    public LoginResponseDTO refreshToken(String token) {
+    public LoginResponseDTO refreshToken(String token, String lang) {
         log.info("Token refresh request received");
 
         String context = ExceptionHelper.createErrorContext("refreshToken", "Token", null, null);
@@ -191,7 +200,7 @@ public class AuthService {
                     return LoginResponseDTO.builder()
                             .token(newToken)
                             .type("Bearer")
-                            .user(convertToUserResponseDTO(user))
+                            .user(convertToUserResponseDTO(user, lang))
                             .build();
                 } else {
                     throw new InvalidTokenException("Token is invalid or expired");
@@ -496,13 +505,10 @@ public class AuthService {
 
         user = userRepository.save(user);
 
-        processCartItems(registerRequest, user);
-        processFavorites(registerRequest, user);
-
-        return userRepository.save(user);
+        return user;
     }
 
-    private void processCartItems(UserRequestDTO request, User user) {
+    private void processCartItems(LoginRequestDTO request, User user) {
         if (request.getCartItems() != null) {
             Set<CartItem> cartItems = request.getCartItems().stream()
                     .map(cartRequest -> createCartItem(cartRequest, user))
@@ -511,7 +517,7 @@ public class AuthService {
         }
     }
 
-    private void processFavorites(UserRequestDTO request, User user) {
+    private void processFavorites(LoginRequestDTO request, User user) {
         if (request.getUserFavorites() != null) {
             Set<UserFavorite> favorites = request.getUserFavorites().stream()
                     .map(productId -> createUserFavorite(productId, user))
@@ -568,7 +574,20 @@ public class AuthService {
         }
     }
 
-    private UserResponseDTO convertToUserResponseDTO(User user) {
+    private UserResponseDTO convertToUserResponseDTO(User user, String lang) {
+        Set<CartItemResponseDto> cartItems = new HashSet<>();
+        if (user.getCartItems() != null) {
+            cartItems = user.getCartItems().stream()
+                    .map(cartItem -> cartService.mapToCartItemResponse(cartItem, cartItem.getProduct(), lang))
+                    .collect(Collectors.toSet());
+        }
+
+        List<UserFavoriteResponseDto> userFavorites = new ArrayList<>();
+        if (user.getFavorites() != null) {
+            userFavorites = user.getFavorites().stream()
+                    .map(fav -> userFavoriteService.convertToResponseDto(fav, lang))
+                    .toList();
+        }
         return UserResponseDTO.builder()
                 .id(user.getId())
                 .username(user.getUsername())
@@ -582,6 +601,8 @@ public class AuthService {
                 .updatedAt(user.getUpdatedAt())
                 .lastLoginAt(user.getLastLoginAt())
                 .fullName(user.getFullName())
+                .cartItems(cartItems)
+                .userFavorites(userFavorites)
                 .build();
     }
 }

@@ -1,17 +1,21 @@
 package com.techstore.controller;
 
-import com.techstore.dto.request.LoginRequestDTO;
-import com.techstore.dto.response.LoginResponseDTO;
-import com.techstore.dto.request.UserRequestDTO;
 import com.techstore.dto.UserResponseDTO;
+import com.techstore.dto.request.LoginRequestDTO;
+import com.techstore.dto.request.UserRequestDTO;
+import com.techstore.dto.response.LoginResponseDTO;
 import com.techstore.service.AuthService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-
-import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -22,16 +26,16 @@ public class AuthController {
     private final AuthService authService;
 
     @PostMapping("/login")
-    public ResponseEntity<LoginResponseDTO> login(@Valid @RequestBody LoginRequestDTO loginRequest) {
+    public ResponseEntity<LoginResponseDTO> login(@Valid @RequestBody LoginRequestDTO loginRequest, @RequestParam(defaultValue = "en") String language) {
         log.info("Login attempt for user: {}", loginRequest.getUsernameOrEmail());
-        LoginResponseDTO response = authService.login(loginRequest);
+        LoginResponseDTO response = authService.login(loginRequest, language);
         return ResponseEntity.ok(response);
     }
 
     @PostMapping("/register")
-    public ResponseEntity<UserResponseDTO> register(@Valid @RequestBody UserRequestDTO registerRequest) {
+    public ResponseEntity<UserResponseDTO> register(@Valid @RequestBody UserRequestDTO registerRequest, @RequestParam(defaultValue = "en") String language) {
         log.info("Registration attempt for user: {}", registerRequest.getUsername());
-        UserResponseDTO response = authService.register(registerRequest);
+        UserResponseDTO response = authService.register(registerRequest, language);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -43,9 +47,9 @@ public class AuthController {
     }
 
     @PostMapping("/refresh")
-    public ResponseEntity<LoginResponseDTO> refreshToken(@RequestHeader("Authorization") String token) {
+    public ResponseEntity<LoginResponseDTO> refreshToken(@RequestHeader("Authorization") String token, @RequestParam(defaultValue = "en") String language) {
         log.info("Token refresh request received");
-        LoginResponseDTO response = authService.refreshToken(token);
+        LoginResponseDTO response = authService.refreshToken(token, language);
         return ResponseEntity.ok(response);
     }
 

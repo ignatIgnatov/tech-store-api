@@ -35,13 +35,7 @@ public class CartService {
 
         List<CartItemResponseDto> itemDtos = cartItems.stream()
                 .map(cartItem -> {
-                    CartItemResponseDto dto = new CartItemResponseDto();
-                    dto.setId(cartItem.getId());
-                    dto.setProduct(productMapper.toSummaryDto(cartItem.getProduct(), language));
-                    dto.setQuantity(cartItem.getQuantity());
-                    dto.setItemTotal(cartItem.getProduct().getFinalPrice().multiply(BigDecimal.valueOf(cartItem.getQuantity())));
-                    dto.setCreatedAt(cartItem.getCreatedAt());
-                    dto.setUpdatedAt(cartItem.getUpdatedAt());
+                    CartItemResponseDto dto = mapToCartItemResponse(cartItem, cartItem.getProduct(), language);
                     return dto;
                 })
                 .toList();
@@ -79,13 +73,7 @@ public class CartService {
 
         cartItem = cartItemRepository.save(cartItem);
 
-        CartItemResponseDto dto = new CartItemResponseDto();
-        dto.setId(cartItem.getId());
-        dto.setProduct(productMapper.toSummaryDto(product, language));
-        dto.setQuantity(cartItem.getQuantity());
-        dto.setItemTotal(product.getFinalPrice().multiply(BigDecimal.valueOf(cartItem.getQuantity())));
-        dto.setCreatedAt(cartItem.getCreatedAt());
-        dto.setUpdatedAt(cartItem.getUpdatedAt());
+        CartItemResponseDto dto = mapToCartItemResponse(cartItem, product, language);
 
         return dto;
     }
@@ -104,15 +92,7 @@ public class CartService {
         cartItem.setQuantity(quantity);
         cartItem = cartItemRepository.save(cartItem);
 
-        CartItemResponseDto dto = new CartItemResponseDto();
-        dto.setId(cartItem.getId());
-        dto.setProduct(productMapper.toSummaryDto(cartItem.getProduct(), language));
-        dto.setQuantity(cartItem.getQuantity());
-        dto.setItemTotal(cartItem.getProduct().getFinalPrice().multiply(BigDecimal.valueOf(cartItem.getQuantity())));
-        dto.setCreatedAt(cartItem.getCreatedAt());
-        dto.setUpdatedAt(cartItem.getUpdatedAt());
-
-        return dto;
+        return mapToCartItemResponse(cartItem, cartItem.getProduct(), language);
     }
 
     @Transactional
@@ -133,5 +113,16 @@ public class CartService {
     public void clearCart(Long userId) {
         log.info("Clearing cart for user {}", userId);
         cartItemRepository.deleteByUserId(userId);
+    }
+
+    public CartItemResponseDto mapToCartItemResponse(CartItem cartItem, Product cartItem1, String language) {
+        CartItemResponseDto dto = new CartItemResponseDto();
+        dto.setId(cartItem.getId());
+        dto.setProduct(productMapper.toSummaryDto(cartItem1, language));
+        dto.setQuantity(cartItem.getQuantity());
+        dto.setItemTotal(cartItem1.getFinalPrice().multiply(BigDecimal.valueOf(cartItem.getQuantity())));
+        dto.setCreatedAt(cartItem.getCreatedAt());
+        dto.setUpdatedAt(cartItem.getUpdatedAt());
+        return dto;
     }
 }

@@ -6,6 +6,9 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+import java.util.Set;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -17,4 +20,8 @@ public class LoginRequestDTO {
 
     @NotBlank(message = "Password is required")
     private String password;
+
+    private Set<CartItemRequestDto> cartItems;
+
+    private List<Long> userFavorites;
 }

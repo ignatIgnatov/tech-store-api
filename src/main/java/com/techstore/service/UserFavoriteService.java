@@ -340,7 +340,7 @@ public class UserFavoriteService {
         );
     }
 
-    private UserFavoriteResponseDto convertToResponseDto(UserFavorite favorite, String language) {
+    public UserFavoriteResponseDto convertToResponseDto(UserFavorite favorite, String language) {
         UserFavoriteResponseDto dto = new UserFavoriteResponseDto();
         dto.setId(favorite.getId());
         dto.setProduct(productMapper.toSummaryDto(favorite.getProduct(), language));

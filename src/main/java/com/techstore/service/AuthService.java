@@ -1,16 +1,21 @@
 package com.techstore.service;
 
 import com.techstore.dto.UserResponseDTO;
+import com.techstore.dto.request.CartItemRequestDto;
 import com.techstore.dto.request.LoginRequestDTO;
 import com.techstore.dto.request.UserRequestDTO;
 import com.techstore.dto.response.LoginResponseDTO;
+import com.techstore.entity.CartItem;
+import com.techstore.entity.Product;
 import com.techstore.entity.User;
+import com.techstore.entity.UserFavorite;
 import com.techstore.exception.AccountNotActivatedException;
 import com.techstore.exception.BusinessLogicException;
 import com.techstore.exception.DuplicateResourceException;
 import com.techstore.exception.InvalidCredentialsException;
 import com.techstore.exception.InvalidTokenException;
 import com.techstore.exception.ValidationException;
+import com.techstore.repository.CartItemRepository;
 import com.techstore.repository.UserRepository;
 import com.techstore.util.ExceptionHelper;
 import com.techstore.util.JwtUtil;
@@ -29,7 +34,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -41,8 +49,8 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     private final JwtUtil jwtUtil;
+    private final ProductService productService;
 
-    // Validation patterns
     private static final Pattern EMAIL_PATTERN = Pattern.compile(
             "^[A-Za-z0-9+_.-]+@([A-Za-z0-9.-]+\\.[A-Za-z]{2,})$"
     );
@@ -486,7 +494,47 @@ public class AuthService {
         user.setActive(true);
         user.setEmailVerified(false);
 
-        return user;
+        user = userRepository.save(user);
+
+        processCartItems(registerRequest, user);
+        processFavorites(registerRequest, user);
+
+        return userRepository.save(user);
+    }
+
+    private void processCartItems(UserRequestDTO request, User user) {
+        if (request.getCartItems() != null) {
+            Set<CartItem> cartItems = request.getCartItems().stream()
+                    .map(cartRequest -> createCartItem(cartRequest, user))
+                    .collect(Collectors.toSet());
+            user.setCartItems(cartItems);
+        }
+    }
+
+    private void processFavorites(UserRequestDTO request, User user) {
+        if (request.getUserFavorites() != null) {
+            Set<UserFavorite> favorites = request.getUserFavorites().stream()
+                    .map(productId -> createUserFavorite(productId, user))
+                    .collect(Collectors.toSet());
+            user.setFavorites(favorites);
+        }
+    }
+
+    private CartItem createCartItem(CartItemRequestDto request, User user) {
+        Product product = productService.findProductByIdOrThrow(request.getProductId());
+        CartItem cartItem = new CartItem();
+        cartItem.setUser(user);
+        cartItem.setProduct(product);
+        cartItem.setQuantity(request.getQuantity());
+        return cartItem;
+    }
+
+    private UserFavorite createUserFavorite(Long productId, User user) {
+        Product product = productService.findProductByIdOrThrow(productId);
+        UserFavorite favorite = new UserFavorite();
+        favorite.setUser(user);
+        favorite.setProduct(product);
+        return favorite;
     }
 
     private void updateLastLogin(User user) {

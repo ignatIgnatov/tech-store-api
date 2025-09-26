@@ -26,12 +26,12 @@ public class ManufacturerController {
 
     private final ManufacturerService manufacturerService;
 
-    @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
+    @GetMapping
     public ResponseEntity<List<ManufacturerResponseDto>> getAll(@RequestParam(required = false) String language) {
         return ResponseEntity.ok(manufacturerService.getAllManufacturers(language));
     }
 
-    @GetMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @GetMapping(value = "/{id}")
     public ResponseEntity<ManufacturerResponseDto> getById(
             @PathVariable Long id,
             @RequestParam(required = false) String language
@@ -39,14 +39,14 @@ public class ManufacturerController {
         return ResponseEntity.ok(manufacturerService.getManufacturerById(id, language));
     }
 
-    @PostMapping(produces = MediaType.APPLICATION_JSON_VALUE)
+    @PostMapping
 //    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
     public ResponseEntity<ManufacturerResponseDto> create(@RequestBody ManufacturerRequestDto requestDto) {
         ManufacturerResponseDto responseDto = manufacturerService.createManufacturer(requestDto);
         return ResponseEntity.ok(responseDto);
     }
 
-    @PutMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PutMapping(value = "/{id}")
 //    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
     public ResponseEntity<ManufacturerResponseDto> update(
             @PathVariable Long id,
@@ -56,7 +56,7 @@ public class ManufacturerController {
         return ResponseEntity.ok(responseDto);
     }
 
-    @DeleteMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @DeleteMapping(value = "/{id}")
 //    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         manufacturerService.deleteManufacturer(id);

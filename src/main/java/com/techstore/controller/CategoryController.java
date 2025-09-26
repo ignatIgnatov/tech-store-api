@@ -35,13 +35,13 @@ public class CategoryController {
 
     private final CategoryService categoryService;
 
-    @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
+    @GetMapping
     public ResponseEntity<List<CategoryResponseDTO>> getAllCategories() {
         List<CategoryResponseDTO> categories = categoryService.getAllCategories();
         return ResponseEntity.ok(categories);
     }
 
-    @GetMapping(value = "/paginated", produces = MediaType.APPLICATION_JSON_VALUE)
+    @GetMapping(value = "/paginated")
     public ResponseEntity<Page<CategoryResponseDTO>> getAllCategoriesPaginated(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
@@ -56,14 +56,14 @@ public class CategoryController {
         return ResponseEntity.ok(categories);
     }
 
-    @GetMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @GetMapping(value = "/{id}")
     public ResponseEntity<CategoryResponseDTO> getCategoryById(@PathVariable Long id) {
         CategoryResponseDTO category = categoryService.getCategoryById(id);
         return ResponseEntity.ok(category);
     }
 
     @Hidden
-    @GetMapping(value = "/slug/{slug}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @GetMapping(value = "/slug/{slug}")
     public ResponseEntity<CategoryResponseDTO> getCategoryBySlug(@PathVariable String slug) {
         CategoryResponseDTO category = categoryService.getCategoryBySlug(slug);
         return ResponseEntity.ok(category);
@@ -71,14 +71,14 @@ public class CategoryController {
 
     // ===== ADMIN ENDPOINTS =====
 
-    @PostMapping(produces = MediaType.APPLICATION_JSON_VALUE)
+    @PostMapping
 //    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
     public ResponseEntity<CategoryResponseDTO> createCategory(@Valid @RequestBody CategoryRequestDto requestDTO) {
         CategoryResponseDTO createdCategory = categoryService.createCategory(requestDTO);
         return ResponseEntity.status(HttpStatus.CREATED).body(createdCategory);
     }
 
-    @PutMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PutMapping(value = "/{id}")
 //    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
     public ResponseEntity<CategoryResponseDTO> updateCategory(
             @PathVariable Long id,
@@ -89,7 +89,7 @@ public class CategoryController {
         return ResponseEntity.ok(updatedCategory);
     }
 
-    @DeleteMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @DeleteMapping(value = "/{id}")
 //    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
     public ResponseEntity<Void> deleteCategory(@PathVariable Long id) {
         log.info("Deleting category with id: {}", id);

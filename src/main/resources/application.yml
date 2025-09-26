@@ -1,4 +1,17 @@
 spring:
+    cache:
+        type: caffeine
+        cache-names:
+            - products
+            - manufacturers
+            - parameters
+            - parameterOptions
+            - categoriesByExternalId
+            - manufacturersByExternalId
+            - parametersByCategory
+            - productsByCategory
+        caffeine:
+            spec: maximumSize=10000,expireAfterWrite=1h,expireAfterAccess=30m
     application:
         name: tech-store-api
 
@@ -145,20 +158,6 @@ app:
                 - pozharoizvesyavane
                 - perimetrova-zashtita
 
-    cache:
-        names:
-            - parametersByCategory
-            - optionsByParameter
-            - categoriesByExternalId
-            - manufacturersByExternalId
-            - parameters
-            - productsByCategory
-            - parameterOptions
-            - tekraProducts
-            - tekraCategories
-        caffeine:
-            spec: maximumSize=10000,expireAfterWrite=1h,recordStats
-
     markup:
         default-percentage: 20.0
         max-percentage: 200.0
@@ -200,7 +199,6 @@ management:
 # OpenAPI/Swagger Configuration
 springdoc:
     api-docs:
-        version: OPENAPI_3_0
         path: /v3/api-docs
     swagger-ui:
         path: /swagger-ui.html

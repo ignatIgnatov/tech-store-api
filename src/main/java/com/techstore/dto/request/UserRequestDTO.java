@@ -8,6 +8,10 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -33,8 +37,11 @@ public class UserRequestDTO {
     @Size(max = 100, message = "Last name must not exceed 100 characters")
     private String lastName;
 
-    @NotBlank(message = "Role is required")
     private String role;
 
     private Boolean active = true;
+
+    private Set<CartItemRequestDto> cartItems;
+
+    private List<Long> userFavorites;
 }

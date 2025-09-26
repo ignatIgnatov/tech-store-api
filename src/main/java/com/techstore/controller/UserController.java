@@ -3,6 +3,7 @@ package com.techstore.controller;
 import com.techstore.dto.request.UserRequestDTO;
 import com.techstore.dto.UserResponseDTO;
 import com.techstore.service.UserService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,13 +31,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/users")
 @RequiredArgsConstructor
 @Slf4j
+@Tag(name = "Users", description = "User management APIs")
 public class UserController {
 
     private final UserService userService;
 
-    // ===== ADMIN ENDPOINTS =====
-
-    @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
+    @GetMapping
     @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
     public ResponseEntity<Page<UserResponseDTO>> getAllUsers(
             @RequestParam(defaultValue = "0") int page,
@@ -52,21 +52,21 @@ public class UserController {
         return ResponseEntity.ok(users);
     }
 
-    @GetMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @GetMapping(value = "/{id}")
     @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
     public ResponseEntity<UserResponseDTO> getUserById(@PathVariable Long id) {
         UserResponseDTO user = userService.getUserById(id);
         return ResponseEntity.ok(user);
     }
 
-    @GetMapping(value = "/username/{username}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @GetMapping(value = "/username/{username}")
     @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
     public ResponseEntity<UserResponseDTO> getUserByUsername(@PathVariable String username) {
         UserResponseDTO user = userService.getUserByUsername(username);
         return ResponseEntity.ok(user);
     }
 
-    @PostMapping(produces = MediaType.APPLICATION_JSON_VALUE)
+    @PostMapping
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     public ResponseEntity<UserResponseDTO> createUser(@Valid @RequestBody UserRequestDTO requestDTO) {
         log.info("Creating user with username: {}", requestDTO.getUsername());
@@ -74,7 +74,7 @@ public class UserController {
         return ResponseEntity.status(HttpStatus.CREATED).body(createdUser);
     }
 
-    @PutMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PutMapping(value = "/{id}")
     @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
     public ResponseEntity<UserResponseDTO> updateUser(
             @PathVariable Long id,
@@ -85,7 +85,7 @@ public class UserController {
         return ResponseEntity.ok(updatedUser);
     }
 
-    @DeleteMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @DeleteMapping(value = "/{id}")
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     public ResponseEntity<Void> deleteUser(@PathVariable Long id) {
         log.info("Deleting user with id: {}", id);
@@ -93,16 +93,15 @@ public class UserController {
         return ResponseEntity.noContent().build();
     }
 
-    // ===== PROFILE ENDPOINTS =====
 
-    @GetMapping(value = "/profile", produces = MediaType.APPLICATION_JSON_VALUE)
+    @GetMapping(value = "/profile")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<UserResponseDTO> getCurrentUserProfile() {
         // Implementation would get current authenticated user
         return ResponseEntity.ok(new UserResponseDTO());
     }
 
-    @PutMapping(value = "/profile", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PutMapping(value = "/profile")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<UserResponseDTO> updateCurrentUserProfile(
             @Valid @RequestBody UserRequestDTO requestDTO) {
@@ -110,7 +109,7 @@ public class UserController {
         return ResponseEntity.ok(new UserResponseDTO());
     }
 
-    @PutMapping(value = "/profile/password", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PutMapping(value = "/profile/password")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<String> changePassword(
             @RequestParam String currentPassword,

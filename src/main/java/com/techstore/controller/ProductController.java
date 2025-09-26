@@ -49,12 +49,12 @@ public class ProductController {
     private final ProductService productService;
     private final FilteringService filteringService;
 
-    @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
-    @Operation(summary = "Get all products", description = "Retrieve paginated list of active products")
+    @GetMapping
+//    @Operation(summary = "Get all products", description = "Retrieve paginated list of active products")
     public ResponseEntity<Page<ProductResponseDTO>> getAllProducts(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
-            @RequestParam(defaultValue = "name") String sortBy,
+            @RequestParam(defaultValue = "nameEn") String sortBy,
             @RequestParam(defaultValue = "asc") String sortDir,
             @RequestParam(defaultValue = "en") String language) {
 
@@ -66,14 +66,14 @@ public class ProductController {
         return ResponseEntity.ok(products);
     }
 
-    @GetMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @GetMapping(value = "/{id}")
     @Operation(summary = "Get product by ID", description = "Retrieve detailed product information")
     public ResponseEntity<ProductResponseDTO> getProductById(@PathVariable Long id,  @RequestParam(defaultValue = "en") String language) {
         ProductResponseDTO product = productService.getProductById(id, language);
         return ResponseEntity.ok(product);
     }
 
-    @GetMapping(value = "/category/{categoryId}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @GetMapping(value = "/category/{categoryId}")
     @Operation(summary = "Get products by category", description = "Retrieve products filtered by category")
     public ResponseEntity<Page<ProductResponseDTO>> getProductsByCategory(
             @PathVariable Long categoryId,
@@ -91,13 +91,13 @@ public class ProductController {
         return ResponseEntity.ok(products);
     }
 
-    @GetMapping(value = "/brand/{brandId}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @GetMapping(value = "/brand/{brandId}")
     @Operation(summary = "Get products by brand", description = "Retrieve products filtered by manufacturer/brand")
     public ResponseEntity<Page<ProductResponseDTO>> getProductsByBrand(
             @PathVariable Long brandId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
-            @RequestParam(defaultValue = "name") String sortBy,
+            @RequestParam(defaultValue = "nameEn") String sortBy,
             @RequestParam(defaultValue = "asc") String sortDir,
             @RequestParam(defaultValue = "en") String language) {
 
@@ -109,7 +109,7 @@ public class ProductController {
         return ResponseEntity.ok(products);
     }
 
-    @GetMapping(value = "/featured", produces = MediaType.APPLICATION_JSON_VALUE)
+    @GetMapping(value = "/featured")
     @Operation(summary = "Get featured products", description = "Retrieve featured products")
     public ResponseEntity<Page<ProductResponseDTO>> getFeaturedProducts(
             @RequestParam(defaultValue = "0") int page,
@@ -121,7 +121,7 @@ public class ProductController {
         return ResponseEntity.ok(products);
     }
 
-    @GetMapping(value = "/on-sale", produces = MediaType.APPLICATION_JSON_VALUE)
+    @GetMapping(value = "/on-sale")
     @Operation(summary = "Get products on sale", description = "Retrieve products with discounts")
     public ResponseEntity<Page<ProductResponseDTO>> getProductsOnSale(
             @RequestParam(defaultValue = "0") int page,
@@ -134,13 +134,13 @@ public class ProductController {
     }
 
     @Hidden
-    @GetMapping(value = "/search", produces = MediaType.APPLICATION_JSON_VALUE)
+    @GetMapping(value = "/search")
     @Operation(summary = "Search products", description = "Search products by text query")
     public ResponseEntity<Page<ProductResponseDTO>> searchProducts(
             @RequestParam String q,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
-            @RequestParam(defaultValue = "name") String sortBy,
+            @RequestParam(defaultValue = "nameЕn") String sortBy,
             @RequestParam(defaultValue = "asc") String sortDir,
             @RequestParam(defaultValue = "en") String language) {
 
@@ -153,7 +153,7 @@ public class ProductController {
     }
 
     @Hidden
-    @GetMapping(value = "/filter", produces = MediaType.APPLICATION_JSON_VALUE)
+    @GetMapping(value = "/filter")
     @Operation(summary = "Filter products", description = "Filter products with multiple criteria")
     public ResponseEntity<Page<ProductResponseDTO>> filterProducts(
             @RequestParam(required = false) Long categoryId,
@@ -165,7 +165,7 @@ public class ProductController {
             @RequestParam(required = false) String q,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
-            @RequestParam(defaultValue = "name") String sortBy,
+            @RequestParam(defaultValue = "nameEn") String sortBy,
             @RequestParam(defaultValue = "asc") String sortDir,
             @RequestParam(defaultValue = "en") String language) {
 
@@ -181,13 +181,13 @@ public class ProductController {
     }
 
     @Hidden
-    @PostMapping(value = "/filter/advanced", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PostMapping(value = "/filter/advanced")
     @Operation(summary = "Advanced product filtering", description = "Filter products with advanced specification-based filters")
     public ResponseEntity<Page<ProductResponseDTO>> filterProductsAdvanced(
             @RequestBody AdvancedFilterRequestDTO filterRequest,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
-            @RequestParam(defaultValue = "name") String sortBy,
+            @RequestParam(defaultValue = "nameEn") String sortBy,
             @RequestParam(defaultValue = "asc") String sortDir,
             @RequestParam(defaultValue = "en") String language) {
 
@@ -200,7 +200,7 @@ public class ProductController {
     }
 
     @Hidden
-    @GetMapping(value = "/{id}/related", produces = MediaType.APPLICATION_JSON_VALUE)
+    @GetMapping(value = "/{id}/related")
     @Operation(summary = "Get related products", description = "Get products related to the specified product")
     public ResponseEntity<List<ProductResponseDTO>> getRelatedProducts(
             @PathVariable Long id,
@@ -269,7 +269,7 @@ public class ProductController {
 
     @Hidden
     @PostMapping(value = "/{id}/images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
+//    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
     @Operation(summary = "Add image to existing product", description = "Add single image to existing product")
     public ResponseEntity<ProductImageUploadResponseDTO> addImageToProduct(
             @PathVariable Long id,
@@ -283,7 +283,7 @@ public class ProductController {
 
     @Hidden
     @DeleteMapping("/{id}/images")
-    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
+//    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
     @Operation(summary = "Delete product image", description = "Delete specific image from product")
     public ResponseEntity<Void> deleteProductImage(
             @PathVariable Long id,
@@ -295,8 +295,8 @@ public class ProductController {
     }
 
     @Hidden
-    @PutMapping(value = "/{id}/images/reorder", produces = MediaType.APPLICATION_JSON_VALUE)
-    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
+    @PutMapping(value = "/{id}/images/reorder")
+//    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
     @Operation(summary = "Reorder product images", description = "Reorder existing product images")
     public ResponseEntity<ProductResponseDTO> reorderProductImages(
             @PathVariable Long id,

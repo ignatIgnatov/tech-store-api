@@ -13,7 +13,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import java.util.List;
 
 @Configuration
-public class JacksonConfig implements WebMvcConfigurer {
+public class JacksonConfig {
 
     @Bean
     @Primary
@@ -32,13 +32,13 @@ public class JacksonConfig implements WebMvcConfigurer {
         return mapper;
     }
 
-    @Override
-    public void configureMessageConverters(List<HttpMessageConverter<?>> converters) {
-        // Ensure JSON converter is first (higher priority than XML)
-        MappingJackson2HttpMessageConverter jsonConverter = new MappingJackson2HttpMessageConverter();
-        jsonConverter.setObjectMapper(objectMapper());
-
-        // Add JSON converter at the beginning of the list
-        converters.add(0, jsonConverter);
-    }
+//    @Override
+//    public void configureMessageConverters(List<HttpMessageConverter<?>> converters) {
+//        // Ensure JSON converter is first (higher priority than XML)
+//        MappingJackson2HttpMessageConverter jsonConverter = new MappingJackson2HttpMessageConverter();
+//        jsonConverter.setObjectMapper(objectMapper());
+//
+//        // Add JSON converter at the beginning of the list
+//        converters.add(0, jsonConverter);
+//    }
 }

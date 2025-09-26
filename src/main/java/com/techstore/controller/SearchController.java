@@ -19,12 +19,11 @@ import java.util.List;
 @RequestMapping("/api/search")
 @RequiredArgsConstructor
 @Slf4j
-@CrossOrigin(origins = "*", maxAge = 3600)
 public class SearchController {
 
     private final SearchService searchService;
 
-    @GetMapping(value = "/suggestions", produces = MediaType.APPLICATION_JSON_VALUE)
+    @GetMapping(value = "/suggestions")
     public ResponseEntity<List<String>> getSuggestions(
             @RequestParam String q,
             @RequestParam(required = false) Long categoryId,

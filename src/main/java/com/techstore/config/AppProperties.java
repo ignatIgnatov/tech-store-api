@@ -6,8 +6,8 @@ import org.springframework.context.annotation.Configuration;
 
 import java.math.BigDecimal;
 
-@Configuration
-@ConfigurationProperties(prefix = "app")
+//@Configuration
+//@ConfigurationProperties(prefix = "app")
 @Data
 public class AppProperties {
 

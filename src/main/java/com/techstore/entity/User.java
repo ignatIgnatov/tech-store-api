@@ -62,11 +62,11 @@ public class User extends BaseEntity implements UserDetails {
     @Column(name = "preferred_language")
     private String preferredLanguage = "bg";
 
-    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private Set<UserFavorite> favorites = new HashSet<>();
-
-    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
     private Set<CartItem> cartItems = new HashSet<>();
+
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    private Set<UserFavorite> favorites = new HashSet<>();
 
     public enum Role {
         USER, ADMIN, SUPER_ADMIN

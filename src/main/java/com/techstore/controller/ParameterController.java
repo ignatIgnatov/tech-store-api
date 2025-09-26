@@ -33,7 +33,7 @@ public class ParameterController {
 
     private final ParameterService parameterService;
 
-    @PostMapping(produces = MediaType.APPLICATION_JSON_VALUE)
+    @PostMapping
     public ResponseEntity<ParameterResponseDto> createParameter(
             @Valid @RequestBody ParameterRequestDto requestDto,
             @RequestParam(defaultValue = "en") String language) {
@@ -43,7 +43,7 @@ public class ParameterController {
         return ResponseEntity.status(HttpStatus.CREATED).body(parameter);
     }
 
-    @PutMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PutMapping(value = "/{id}")
     public ResponseEntity<ParameterResponseDto> updateParameter(
             @PathVariable("id") Long id,
             @Valid @RequestBody ParameterRequestDto requestDto,
@@ -61,7 +61,7 @@ public class ParameterController {
         return ResponseEntity.noContent().build();
     }
 
-    @GetMapping(value = "/category/{categoryId}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @GetMapping(value = "/category/{categoryId}")
     public ResponseEntity<List<ParameterResponseDto>> getParametersByCategory(
             @PathVariable @NotNull Long categoryId,
             @RequestParam(defaultValue = "en") String language) {
@@ -71,7 +71,7 @@ public class ParameterController {
         return ResponseEntity.ok(parameters);
     }
 
-    @GetMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @GetMapping(value = "/{id}")
     public ResponseEntity<ParameterResponseDto> getParameterById(
             @PathVariable @NotNull Long id,
             @RequestParam(defaultValue = "en") String language) {
@@ -82,7 +82,7 @@ public class ParameterController {
     }
 
     @Hidden
-    @GetMapping(value = "/all", produces = MediaType.APPLICATION_JSON_VALUE)
+    @GetMapping(value = "/all")
     public ResponseEntity<List<ParameterResponseDto>> getAllParameters(
             @RequestParam(defaultValue = "en") String language
     ) {

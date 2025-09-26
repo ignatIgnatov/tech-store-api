@@ -7,7 +7,8 @@ import org.springframework.cache.caffeine.CaffeineCacheManager;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-import java.time.Duration;
+import java.util.Arrays;
+import java.util.concurrent.TimeUnit;
 
 @Configuration
 @EnableCaching
@@ -15,23 +16,24 @@ public class CacheConfig {
 
     @Bean
     public CacheManager cacheManager() {
-        CaffeineCacheManager cacheManager = new CaffeineCacheManager(
-                "parametersByCategory",
-                "optionsByParameter",
+        CaffeineCacheManager cacheManager = new CaffeineCacheManager();
+
+        cacheManager.setCacheNames(Arrays.asList(
+                "products",
+                "manufacturers",
+                "parameters",
+                "parameterOptions",
                 "categoriesByExternalId",
                 "manufacturersByExternalId",
-                "parameters",
-                "productsByCategory",
-                "parameterOptions"
-        );
-        cacheManager.setCaffeine(
-                Caffeine.newBuilder()
-                        .expireAfterWrite(Duration.ofHours(1))
-                        .maximumSize(10_000)
-                        .recordStats()
-        );
+                "parametersByCategory",
+                "productsByCategory"
+        ));
+
+        cacheManager.setCaffeine(Caffeine.newBuilder()
+                .maximumSize(10000)
+                .expireAfterWrite(1, TimeUnit.HOURS)
+                .expireAfterAccess(30, TimeUnit.MINUTES)
+                .recordStats());
         return cacheManager;
     }
-
-
 }

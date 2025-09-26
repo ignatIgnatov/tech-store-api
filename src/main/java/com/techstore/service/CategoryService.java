@@ -39,7 +39,7 @@ public class CategoryService {
                         categoryRepository.findByShowTrueOrderBySortOrderAscNameEnAsc()
                                 .stream()
                                 .map(this::convertToResponseDTO)
-                                .collect(Collectors.toList()),
+                                .toList(),
                 "fetch all categories"
         );
     }

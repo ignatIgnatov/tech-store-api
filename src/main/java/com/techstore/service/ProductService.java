@@ -930,7 +930,7 @@ public class ProductService {
 
     // ============ HELPER METHODS ============
 
-    private Product findProductByIdOrThrow(Long id) {
+    public Product findProductByIdOrThrow(Long id) {
         return ExceptionHelper.findOrThrow(
                 productRepository.findById(id).orElse(null),
                 "Product",
@@ -1343,7 +1343,7 @@ public class ProductService {
 
             // Check if we already have this parameter (duplicate handling)
             if (uniqueSpecs.containsKey(parameterId)) {
-                log.warn("DUPLICATE Parameter ID found: {}. Merging options...", parameterId);
+                log.debug("DUPLICATE Parameter ID found: {}. Merging options...", parameterId);
 
                 ProductParameterResponseDto existing = uniqueSpecs.get(parameterId);
                 List<ParameterOptionResponseDto> combinedOptions = new ArrayList<>();

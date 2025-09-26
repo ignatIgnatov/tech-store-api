@@ -1,9 +1,9 @@
 package com.techstore.controller;
 
 import com.techstore.service.SyncService;
+import io.swagger.v3.oas.annotations.Hidden;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
 
+@Hidden
 @RestController
 @RequestMapping("/admin/tekra/sync")
 @RequiredArgsConstructor
@@ -20,7 +21,7 @@ public class TekraController {
 
     private final SyncService syncService;
 
-    @PostMapping(value = "/categories", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PostMapping(value = "/categories")
     public ResponseEntity<Map<String, Object>> syncCategories() {
         try {
             long startTime = System.currentTimeMillis();
@@ -44,7 +45,7 @@ public class TekraController {
         }
     }
 
-    @PostMapping(value = "/manufacturers", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PostMapping(value = "/manufacturers")
     public ResponseEntity<Map<String, Object>> syncManufacturers() {
         try {
             long startTime = System.currentTimeMillis();
@@ -68,7 +69,7 @@ public class TekraController {
         }
     }
 
-    @PostMapping(value = "/parameters", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PostMapping(value = "/parameters")
     public ResponseEntity<Map<String, Object>> syncParameters() {
         try {
             long startTime = System.currentTimeMillis();
@@ -92,7 +93,7 @@ public class TekraController {
         }
     }
 
-    @PostMapping(value = "/products", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PostMapping(value = "/products")
     public ResponseEntity<Map<String, Object>> syncProducts() {
         try {
             long startTime = System.currentTimeMillis();
@@ -116,7 +117,7 @@ public class TekraController {
         }
     }
 
-    @PostMapping(value = "/complete", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PostMapping(value = "/complete")
     public ResponseEntity<Map<String, Object>> syncComplete() {
         try {
             long startTime = System.currentTimeMillis();

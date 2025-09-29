@@ -21,7 +21,7 @@ public class LoginRequestDTO {
     @NotBlank(message = "Password is required")
     private String password;
 
-    private Set<CartItemRequestDto> cartItems;
+    private List<CartItemRequestDto> cartItems;
 
     private List<Long> userFavorites;
 }

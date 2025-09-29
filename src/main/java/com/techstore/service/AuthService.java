@@ -16,7 +16,10 @@ import com.techstore.exception.BusinessLogicException;
 import com.techstore.exception.DuplicateResourceException;
 import com.techstore.exception.InvalidCredentialsException;
 import com.techstore.exception.InvalidTokenException;
+import com.techstore.exception.ResourceNotFoundException;
 import com.techstore.exception.ValidationException;
+import com.techstore.repository.CartItemRepository;
+import com.techstore.repository.UserFavoriteRepository;
 import com.techstore.repository.UserRepository;
 import com.techstore.util.ExceptionHelper;
 import com.techstore.util.JwtUtil;
@@ -38,6 +41,9 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -55,11 +61,14 @@ public class AuthService {
     private final ProductService productService;
     private final CartService cartService;
     private final UserFavoriteService userFavoriteService;
+    private final CartItemRepository cartItemRepository;
+    private final UserFavoriteRepository userFavoriteRepository;
 
     private static final Pattern EMAIL_PATTERN = Pattern.compile(
             "^[A-Za-z0-9+_.-]+@([A-Za-z0-9.-]+\\.[A-Za-z]{2,})$"
     );
 
+    @Transactional
     public LoginResponseDTO login(LoginRequestDTO loginRequest, String lang) {
         log.info("Login attempt for user: {}", loginRequest.getUsernameOrEmail());
 
@@ -67,11 +76,9 @@ public class AuthService {
                 "login", "User", null, loginRequest.getUsernameOrEmail());
 
         return ExceptionHelper.wrapBusinessOperation(() -> {
-            // Validate login request
             validateLoginRequest(loginRequest);
 
             try {
-                // Authenticate user
                 Authentication authentication = authenticationManager.authenticate(
                         new UsernamePasswordAuthenticationToken(
                                 loginRequest.getUsernameOrEmail().trim(),
@@ -81,18 +88,18 @@ public class AuthService {
 
                 User user = (User) authentication.getPrincipal();
 
-                // Perform post-authentication validations
+                user = userRepository.findById(user.getId())
+                        .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
                 validateUserForLogin(user);
-
-                // Generate JWT token
                 String token = jwtUtil.generateToken(user);
-
-                // Update last login timestamp
                 updateLastLogin(user);
 
                 processCartItems(loginRequest, user);
                 processFavorites(loginRequest, user);
-                userRepository.save(user);
+
+                user = userRepository.findByIdWithCartItemsAndFavorites(user.getId())
+                        .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
                 log.info("User {} logged in successfully", user.getUsername());
 
@@ -509,23 +516,35 @@ public class AuthService {
     }
 
     private void processCartItems(LoginRequestDTO request, User user) {
-        if (request.getCartItems() != null) {
-            user.getCartItems().clear();
+        if (request.getCartItems() == null) return;
 
-            for (CartItemRequestDto cartRequest : request.getCartItems()) {
-                CartItem cartItem = createCartItem(cartRequest, user);
-                user.getCartItems().add(cartItem);
+        for (CartItemRequestDto cartRequest : request.getCartItems()) {
+            Optional<CartItem> existingItem = cartItemRepository
+                    .findByUserIdAndProductId(user.getId(), cartRequest.getProductId());
+
+            if (existingItem.isPresent()) {
+                CartItem item = existingItem.get();
+                item.setQuantity(item.getQuantity() + cartRequest.getQuantity());
+                cartItemRepository.save(item);
+            } else {
+                CartItem newItem = createCartItem(cartRequest, user);
+                cartItemRepository.save(newItem);
+                user.getCartItems().add(newItem);
             }
         }
     }
 
-
     private void processFavorites(LoginRequestDTO request, User user) {
-        if (request.getUserFavorites() != null) {
-            user.getFavorites().clear();
-            for (Long productId : request.getUserFavorites()) {
-                UserFavorite favorite = createUserFavorite(productId, user);
-                user.getFavorites().add(favorite);
+        if (request.getUserFavorites() == null) return;
+
+        for (Long productId : request.getUserFavorites()) {
+            boolean exists = userFavoriteRepository
+                    .existsByUserIdAndProductId(user.getId(), productId);
+
+            if (!exists) {
+                UserFavorite newFavorite = createUserFavorite(productId, user);
+                userFavoriteRepository.save(newFavorite);
+                user.getFavorites().add(newFavorite);
             }
         }
     }

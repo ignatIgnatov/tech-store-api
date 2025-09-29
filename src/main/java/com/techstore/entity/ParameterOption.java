@@ -1,16 +1,13 @@
 package com.techstore.entity;
 
-import jakarta.persistence.CascadeType;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.OneToMany;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
-import org.hibernate.search.mapper.pojo.mapping.definition.annotation.FullTextField;
+import org.hibernate.search.mapper.pojo.mapping.definition.annotation.*;
+import org.hibernate.search.engine.backend.types.Aggregable;
+import org.hibernate.search.engine.backend.types.Projectable;
+import org.hibernate.search.engine.backend.types.Searchable;
+import org.hibernate.search.engine.backend.types.Sortable;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -21,21 +18,26 @@ import java.util.Set;
 @Setter
 public class ParameterOption extends BaseEntity {
 
+    @GenericField(name = "externalId", projectable = Projectable.YES, aggregable = Aggregable.YES)
     @Column(name = "external_id")
     private Long externalId;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "parameter_id")
+    @IndexedEmbedded(name = "parameter", includeDepth = 1)
     private Parameter parameter;
 
-    @FullTextField
+    @FullTextField(name = "nameBg", searchable = Searchable.YES, projectable = Projectable.YES)
+    @KeywordField(name = "nameBg_exact", aggregable = Aggregable.YES)
     @Column(name = "name_bg")
     private String nameBg;
 
-    @FullTextField
+    @FullTextField(name = "nameEn", searchable = Searchable.YES, projectable = Projectable.YES)
+    @KeywordField(name = "nameEn_exact", aggregable = Aggregable.YES)
     @Column(name = "name_en")
     private String nameEn;
 
+    @GenericField(name = "order", projectable = Projectable.YES, sortable = Sortable.YES)
     @Column(name = "sort_order")
     private Integer order;
 

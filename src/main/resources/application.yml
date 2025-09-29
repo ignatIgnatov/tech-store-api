@@ -41,6 +41,10 @@ spring:
                         type: lucene
                         directory:
                             root: ${SPRING_JPA_PROPERTIES_HIBERNATE_SEARCH_BACKEND_DIRECTORY_ROOT}
+                    schema_management:
+                        strategy: create-or-update
+                    automatic_indexing:
+                        enabled: true
 
     # Connection Pool Configuration
     hikari:

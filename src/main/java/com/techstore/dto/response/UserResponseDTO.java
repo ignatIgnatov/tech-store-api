@@ -30,4 +30,5 @@ public class UserResponseDTO {
     private String fullName;
     private Set<CartItemResponseDto> cartItems;
     private List<UserFavoriteResponseDto> userFavorites;
+    private Boolean subscribed;
 }

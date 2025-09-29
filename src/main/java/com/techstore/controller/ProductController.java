@@ -132,24 +132,24 @@ public class ProductController {
         return ResponseEntity.ok(products);
     }
 
-    @Hidden
-    @GetMapping(value = "/search")
-    @Operation(summary = "Search products", description = "Search products by text query")
-    public ResponseEntity<Page<ProductResponseDTO>> searchProducts(
-            @RequestParam String q,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
-            @RequestParam(defaultValue = "nameЕn") String sortBy,
-            @RequestParam(defaultValue = "asc") String sortDir,
-            @RequestParam(defaultValue = "en") String language) {
-
-        Sort sort = sortDir.equalsIgnoreCase("desc") ?
-                Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
-        Pageable pageable = PageRequest.of(page, size, sort);
-
-        Page<ProductResponseDTO> products = productService.searchProducts(q, pageable, language);
-        return ResponseEntity.ok(products);
-    }
+//    @Hidden
+//    @GetMapping(value = "/search")
+//    @Operation(summary = "Search products", description = "Search products by text query")
+//    public ResponseEntity<Page<ProductResponseDTO>> searchProducts(
+//            @RequestParam String q,
+//            @RequestParam(defaultValue = "0") int page,
+//            @RequestParam(defaultValue = "20") int size,
+//            @RequestParam(defaultValue = "nameЕn") String sortBy,
+//            @RequestParam(defaultValue = "asc") String sortDir,
+//            @RequestParam(defaultValue = "en") String language) {
+//
+//        Sort sort = sortDir.equalsIgnoreCase("desc") ?
+//                Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
+//        Pageable pageable = PageRequest.of(page, size, sort);
+//
+//        Page<ProductResponseDTO> products = productService.searchProducts(q, pageable, language);
+//        return ResponseEntity.ok(products);
+//    }
 
     @Hidden
     @GetMapping(value = "/filter")

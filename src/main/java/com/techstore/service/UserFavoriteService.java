@@ -131,35 +131,35 @@ public class UserFavoriteService {
         }, context);
     }
 
-    public void removeFromFavoritesByFavoriteId(Long userId, Long favoriteId) {
-        log.info("Removing favorite {} for user {}", favoriteId, userId);
-
-        String context = ExceptionHelper.createErrorContext(
-                "removeFromFavoritesByFavoriteId", "UserFavorite", favoriteId, "userId: " + userId);
-
-        ExceptionHelper.wrapDatabaseOperation(() -> {
-            // Validate inputs
-            validateUserId(userId);
-            validateFavoriteId(favoriteId);
-
-            // Find favorite
-            UserFavorite favorite = findFavoriteByIdOrThrow(favoriteId);
-
-            // Verify ownership
-            if (!favorite.getUser().getId().equals(userId)) {
-                log.warn("User {} attempted to remove favorite {} belonging to user {}",
-                        userId, favoriteId, favorite.getUser().getId());
-                throw new BusinessLogicException("You can only remove your own favorites");
-            }
-
-            // Remove favorite
-            userFavoriteRepository.delete(favorite);
-
-            log.info("Favorite {} successfully removed for user {}", favoriteId, userId);
-            return null;
-
-        }, context);
-    }
+//    public void removeFromFavoritesByFavoriteId(Long userId, Long favoriteId) {
+//        log.info("Removing favorite {} for user {}", favoriteId, userId);
+//
+//        String context = ExceptionHelper.createErrorContext(
+//                "removeFromFavoritesByFavoriteId", "UserFavorite", favoriteId, "userId: " + userId);
+//
+//        ExceptionHelper.wrapDatabaseOperation(() -> {
+//            // Validate inputs
+//            validateUserId(userId);
+//            validateFavoriteId(favoriteId);
+//
+//            // Find favorite
+//            UserFavorite favorite = findFavoriteByIdOrThrow(favoriteId);
+//
+//            // Verify ownership
+//            if (!favorite.getUser().getId().equals(userId)) {
+//                log.warn("User {} attempted to remove favorite {} belonging to user {}",
+//                        userId, favoriteId, favorite.getUser().getId());
+//                throw new BusinessLogicException("You can only remove your own favorites");
+//            }
+//
+//            // Remove favorite
+//            userFavoriteRepository.delete(favorite);
+//
+//            log.info("Favorite {} successfully removed for user {}", favoriteId, userId);
+//            return null;
+//
+//        }, context);
+//    }
 
     public void clearUserFavorites(Long userId) {
         log.info("Clearing all favorites for user {}", userId);
@@ -332,13 +332,13 @@ public class UserFavoriteService {
         );
     }
 
-    private UserFavorite findFavoriteByIdOrThrow(Long favoriteId) {
-        return ExceptionHelper.findOrThrow(
-                userFavoriteRepository.findById(favoriteId).orElse(null),
-                "UserFavorite",
-                favoriteId
-        );
-    }
+//    private UserFavorite findFavoriteByIdOrThrow(Long favoriteId) {
+//        return ExceptionHelper.findOrThrow(
+//                userFavoriteRepository.findById(favoriteId).orElse(null),
+//                "UserFavorite",
+//                favoriteId
+//        );
+//    }
 
     public UserFavoriteResponseDto convertToResponseDto(UserFavorite favorite, String language) {
         UserFavoriteResponseDto dto = new UserFavoriteResponseDto();

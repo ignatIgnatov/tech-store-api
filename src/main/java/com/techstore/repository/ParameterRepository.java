@@ -25,19 +25,12 @@ public interface ParameterRepository extends JpaRepository<Parameter, Long> {
 
     @Query("SELECT DISTINCT p FROM Parameter p " +
             "JOIN p.category c " +
-            "JOIN c.products prod " +
             "WHERE c.id = :categoryId " +
-            "AND prod.show = true " +
-            "AND prod.status <> com.techstore.enums.ProductStatus.NOT_AVAILABLE " +
+            "AND EXISTS (SELECT prod FROM Product prod WHERE prod.category.id = c.id AND prod.status <> com.techstore.enums.ProductStatus.NOT_AVAILABLE) " +
             "ORDER BY p.order ASC")
     List<Parameter> findParametersForAvailableProductsByCategory(@Param("categoryId") Long categoryId);
 
-
     Optional<Parameter> findByExternalIdAndCategoryId(Long externalId, Long categoryId);
-
-    @Query("SELECT po FROM ParameterOption po WHERE po.externalId = :externalId AND po.parameter.id = :parameterId")
-    Optional<ParameterOption> findByExternalIdAndParameterId(@Param("externalId") Long externalId,
-                                                             @Param("parameterId") Long parameterId);
 
     Optional<Parameter> findByCategoryAndNameBg(Category category, String nameBg);
 

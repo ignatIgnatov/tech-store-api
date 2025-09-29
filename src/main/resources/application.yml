@@ -132,6 +132,11 @@ logging:
 
 # Application Specific Configuration
 app:
+    search:
+        postgresql:
+            auto-create-indexes: true  # Set to false to disable auto-creation
+            performance-test: true
+            log-slow-queries: true
     error:
         include-stack-trace: false
         include-root-cause: true

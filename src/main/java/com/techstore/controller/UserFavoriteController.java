@@ -30,11 +30,11 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/v1/favorites")
+@RequestMapping("/api/favorites")
 @RequiredArgsConstructor
 @Slf4j
 @Validated
-@Tag(name = "User Favorites", description = "API за управление на любими продукти")
+@Tag(name = "User Favorites", description = "API for managing favorite products")
 public class UserFavoriteController {
 
     private final UserFavoriteService userFavoriteService;
@@ -42,25 +42,21 @@ public class UserFavoriteController {
 
     @GetMapping
     @PreAuthorize("isAuthenticated()")
-    @Operation(
-            summary = "Вземи списък с любими продукти",
-            description = "Връща странициран списък с любими продукти на текущия потребител"
-    )
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Успешно вземане на любими"),
-            @ApiResponse(responseCode = "400", description = "Невалидни параметри"),
-            @ApiResponse(responseCode = "401", description = "Неавтентикиран потребител"),
-            @ApiResponse(responseCode = "403", description = "Няма права за достъп")
+            @ApiResponse(responseCode = "200", description = "Successfully retrieved favorites"),
+            @ApiResponse(responseCode = "400", description = "Invalid parameters"),
+            @ApiResponse(responseCode = "401", description = "Unauthenticated user"),
+            @ApiResponse(responseCode = "403", description = "Access denied")
     })
     public ResponseEntity<Page<UserFavoriteResponseDto>> getUserFavorites(
-            @Parameter(description = "Номер на страница (0-based)", example = "0")
+            @Parameter(description = "Page number (0-based)", example = "0")
             @RequestParam(defaultValue = "0") @Min(0) int page,
 
-            @Parameter(description = "Размер на страница (1-100)", example = "20")
+            @Parameter(description = "Page size (1-100)", example = "20")
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
 
-            @Parameter(description = "Език за локализация (en/bg)", example = "bg")
-            @RequestParam(defaultValue = "bg") @Pattern(regexp = "^(en|bg)$", message = "Езикът трябва да е 'en' или 'bg'") String language) {
+            @Parameter(description = "Localization language (en/bg)", example = "bg")
+            @RequestParam(defaultValue = "bg") @Pattern(regexp = "^(en|bg)$", message = "Language must be 'en' or 'bg'") String language) {
 
         Long userId = securityHelper.getCurrentUserId();
         log.info("Getting favorites for user: {}, page: {}, size: {}", userId, page, size);
@@ -72,84 +68,81 @@ public class UserFavoriteController {
     @PostMapping
     @PreAuthorize("isAuthenticated()")
     @Operation(
-            summary = "Добави продукт в любими",
-            description = "Добавя указан продукт в списъка с любими на текущия потребител"
+            description = "Adds or removes products from favorites"
     )
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Продуктът е добавен успешно"),
-            @ApiResponse(responseCode = "400", description = "Невалидни данни"),
-            @ApiResponse(responseCode = "401", description = "Неавтентикиран потребител"),
-            @ApiResponse(responseCode = "403", description = "Няма права за достъп"),
-            @ApiResponse(responseCode = "404", description = "Продуктът не е намерен")
+            @ApiResponse(responseCode = "200", description = "Favorite status successfully updated"),
+            @ApiResponse(responseCode = "400", description = "Invalid data"),
+            @ApiResponse(responseCode = "401", description = "Unauthenticated user"),
+            @ApiResponse(responseCode = "403", description = "Access denied"),
+            @ApiResponse(responseCode = "404", description = "Product not found")
     })
-    public ResponseEntity<Void> addToFavorites(
+    public ResponseEntity<Boolean> toggleFavorite(
             @Valid @RequestBody FavoriteRequestDto request) {
 
         Long userId = securityHelper.getCurrentUserId();
-        log.info("Adding product {} to favorites for user {}", request.getProductId(), userId);
+        log.info("Toggling favorite status for product {} and user {}", request.getProductId(), userId);
 
-        userFavoriteService.addToFavorites(userId, request.getProductId());
-        return ResponseEntity.ok().build();
+        boolean wasInFavorites = userFavoriteService.isProductInFavorites(userId, request.getProductId());
+        userFavoriteService.toggleFavorite(userId, request.getProductId());
+
+        return ResponseEntity.ok(!wasInFavorites);
     }
 
-    @DeleteMapping("/product/{productId}")
-    @PreAuthorize("isAuthenticated()")
-    @Operation(
-            summary = "Премахни продукт от любими",
-            description = "Премахва продукт от списъка с любими на текущия потребител по ID на продукта"
-    )
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Продуктът е премахнат успешно"),
-            @ApiResponse(responseCode = "400", description = "Невалидно ID на продукт"),
-            @ApiResponse(responseCode = "401", description = "Неавтентикиран потребител"),
-            @ApiResponse(responseCode = "403", description = "Няма права за достъп"),
-            @ApiResponse(responseCode = "404", description = "Продуктът не е намерен в любими")
-    })
-    public ResponseEntity<Void> removeFromFavorites(
-            @Parameter(description = "ID на продукта за премахване", example = "1", required = true)
-            @PathVariable Long productId) {
+//    @DeleteMapping("/product/{productId}")
+//    @PreAuthorize("isAuthenticated()")
+//    @ApiResponses({
+//            @ApiResponse(responseCode = "200", description = "Product successfully removed"),
+//            @ApiResponse(responseCode = "400", description = "Invalid product ID"),
+//            @ApiResponse(responseCode = "401", description = "Unauthenticated user"),
+//            @ApiResponse(responseCode = "403", description = "Access denied"),
+//            @ApiResponse(responseCode = "404", description = "Product not found in favorites")
+//    })
+//    public ResponseEntity<Void> removeFromFavorites(
+//            @Parameter(description = "ID of the product to remove", example = "1", required = true)
+//            @PathVariable Long productId) {
+//
+//        Long userId = securityHelper.getCurrentUserId();
+//        log.info("Removing product {} from favorites for user {}", productId, userId);
+//
+//        userFavoriteService.removeFromFavorites(userId, productId);
+//        return ResponseEntity.ok().build();
+//    }
 
-        Long userId = securityHelper.getCurrentUserId();
-        log.info("Removing product {} from favorites for user {}", productId, userId);
-
-        userFavoriteService.removeFromFavorites(userId, productId);
-        return ResponseEntity.ok().build();
-    }
-
-    @DeleteMapping("/{favoriteId}")
-    @PreAuthorize("isAuthenticated()")
-    @Operation(
-            summary = "Премахни любим по ID",
-            description = "Премахва запис от любими по неговото ID"
-    )
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Записът е премахнат успешно"),
-            @ApiResponse(responseCode = "400", description = "Невалидно ID на любим"),
-            @ApiResponse(responseCode = "401", description = "Неавтентикиран потребител"),
-            @ApiResponse(responseCode = "403", description = "Няма права за достъп или записът не принадлежи на потребителя"),
-            @ApiResponse(responseCode = "404", description = "Записът не е намерен")
-    })
-    public ResponseEntity<Void> removeFromFavoritesById(
-            @Parameter(description = "ID на записа за любим", example = "1", required = true)
-            @PathVariable Long favoriteId) {
-
-        Long userId = securityHelper.getCurrentUserId();
-        log.info("Removing favorite {} for user {}", favoriteId, userId);
-
-        userFavoriteService.removeFromFavoritesByFavoriteId(userId, favoriteId);
-        return ResponseEntity.ok().build();
-    }
+//    @DeleteMapping("/{favoriteId}")
+//    @PreAuthorize("isAuthenticated()")
+//    @Operation(
+//            summary = "Remove favorite by ID",
+//            description = "Removes a favorite entry by its ID"
+//    )
+//    @ApiResponses({
+//            @ApiResponse(responseCode = "200", description = "Favorite successfully removed"),
+//            @ApiResponse(responseCode = "400", description = "Invalid favorite ID"),
+//            @ApiResponse(responseCode = "401", description = "Unauthenticated user"),
+//            @ApiResponse(responseCode = "403", description = "Access denied or entry does not belong to the user"),
+//            @ApiResponse(responseCode = "404", description = "Favorite not found")
+//    })
+//    public ResponseEntity<Void> removeFromFavoritesById(
+//            @Parameter(description = "ID of the favorite entry", example = "1", required = true)
+//            @PathVariable Long favoriteId) {
+//
+//        Long userId = securityHelper.getCurrentUserId();
+//        log.info("Removing favorite {} for user {}", favoriteId, userId);
+//
+//        userFavoriteService.removeFromFavoritesByFavoriteId(userId, favoriteId);
+//        return ResponseEntity.ok().build();
+//    }
 
     @DeleteMapping
     @PreAuthorize("isAuthenticated()")
     @Operation(
-            summary = "Изчисти всички любими",
-            description = "Премахва всички продукти от списъка с любими на текущия потребител"
+            summary = "Clear all favorites",
+            description = "Removes all products from the favorites list of the current user"
     )
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Всички любими са изчистени успешно"),
-            @ApiResponse(responseCode = "401", description = "Неавтентикиран потребител"),
-            @ApiResponse(responseCode = "403", description = "Няма права за достъп")
+            @ApiResponse(responseCode = "200", description = "All favorites successfully cleared"),
+            @ApiResponse(responseCode = "401", description = "Unauthenticated user"),
+            @ApiResponse(responseCode = "403", description = "Access denied")
     })
     public ResponseEntity<Void> clearFavorites() {
         Long userId = securityHelper.getCurrentUserId();
@@ -162,13 +155,13 @@ public class UserFavoriteController {
     @GetMapping("/count")
     @PreAuthorize("isAuthenticated()")
     @Operation(
-            summary = "Вземи брой любими продукти",
-            description = "Връща текущия брой любими продукти и информация за лимита"
+            summary = "Get number of favorite products",
+            description = "Returns the current number of favorite products and limit information"
     )
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Успешно вземане на броя"),
-            @ApiResponse(responseCode = "401", description = "Неавтентикиран потребител"),
-            @ApiResponse(responseCode = "403", description = "Няма права за достъп")
+            @ApiResponse(responseCode = "200", description = "Successfully retrieved count"),
+            @ApiResponse(responseCode = "401", description = "Unauthenticated user"),
+            @ApiResponse(responseCode = "403", description = "Access denied")
     })
     public ResponseEntity<FavoriteCountResponseDto> getFavoriteCount() {
         Long userId = securityHelper.getCurrentUserId();
@@ -182,17 +175,17 @@ public class UserFavoriteController {
     @GetMapping("/check/{productId}")
     @PreAuthorize("isAuthenticated()")
     @Operation(
-            summary = "Провери дали продукт е в любими",
-            description = "Проверява дали указаният продукт е в списъка с любими на текущия потребител"
+            summary = "Check if product is in favorites",
+            description = "Checks whether the specified product is in the current user's favorites list"
     )
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Успешна проверка"),
-            @ApiResponse(responseCode = "400", description = "Невалидно ID на продукт"),
-            @ApiResponse(responseCode = "401", description = "Неавтентикиран потребител"),
-            @ApiResponse(responseCode = "403", description = "Няма права за достъп")
+            @ApiResponse(responseCode = "200", description = "Check successful"),
+            @ApiResponse(responseCode = "400", description = "Invalid product ID"),
+            @ApiResponse(responseCode = "401", description = "Unauthenticated user"),
+            @ApiResponse(responseCode = "403", description = "Access denied")
     })
     public ResponseEntity<Boolean> isProductInFavorites(
-            @Parameter(description = "ID на продукта за проверка", example = "1", required = true)
+            @Parameter(description = "ID of the product to check", example = "1", required = true)
             @PathVariable Long productId) {
 
         Long userId = securityHelper.getCurrentUserId();
@@ -202,45 +195,16 @@ public class UserFavoriteController {
         return ResponseEntity.ok(isInFavorites);
     }
 
-    @PostMapping("/toggle")
-    @PreAuthorize("isAuthenticated()")
-    @Operation(
-            summary = "Превключи статуса на любим",
-            description = "Добавя или премахва продукт от любими в зависимост от текущия му статус"
-    )
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Статусът е променен успешно"),
-            @ApiResponse(responseCode = "400", description = "Невалидни данни"),
-            @ApiResponse(responseCode = "401", description = "Неавтентикиран потребител"),
-            @ApiResponse(responseCode = "403", description = "Няма права за достъп"),
-            @ApiResponse(responseCode = "404", description = "Продуктът не е намерен")
-    })
-    public ResponseEntity<Boolean> toggleFavorite(
-            @Valid @RequestBody FavoriteRequestDto request) {
-
-        Long userId = securityHelper.getCurrentUserId();
-        log.info("Toggling favorite status for product {} and user {}", request.getProductId(), userId);
-
-        // Вземете текущия статус преди превключване
-        boolean wasInFavorites = userFavoriteService.isProductInFavorites(userId, request.getProductId());
-
-        // Превключете статуса
-        userFavoriteService.toggleFavorite(userId, request.getProductId());
-
-        // Върнете новия статус (обратен на предишния)
-        return ResponseEntity.ok(!wasInFavorites);
-    }
-
     @GetMapping("/limit-reached")
     @PreAuthorize("isAuthenticated()")
     @Operation(
-            summary = "Провери дали е достигнат лимита за любими",
-            description = "Проверява дали потребителят е достигнал максималния брой любими продукти"
+            summary = "Check if favorites limit is reached",
+            description = "Checks whether the user has reached the maximum number of favorite products"
     )
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Успешна проверка"),
-            @ApiResponse(responseCode = "401", description = "Неавтентикиран потребител"),
-            @ApiResponse(responseCode = "403", description = "Няма права за достъп")
+            @ApiResponse(responseCode = "200", description = "Check successful"),
+            @ApiResponse(responseCode = "401", description = "Unauthenticated user"),
+            @ApiResponse(responseCode = "403", description = "Access denied")
     })
     public ResponseEntity<Boolean> hasReachedFavoritesLimit() {
         Long userId = securityHelper.getCurrentUserId();

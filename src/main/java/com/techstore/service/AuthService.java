@@ -510,21 +510,26 @@ public class AuthService {
 
     private void processCartItems(LoginRequestDTO request, User user) {
         if (request.getCartItems() != null) {
-            Set<CartItem> cartItems = request.getCartItems().stream()
-                    .map(cartRequest -> createCartItem(cartRequest, user))
-                    .collect(Collectors.toSet());
-            user.setCartItems(cartItems);
+            user.getCartItems().clear();
+
+            for (CartItemRequestDto cartRequest : request.getCartItems()) {
+                CartItem cartItem = createCartItem(cartRequest, user);
+                user.getCartItems().add(cartItem);
+            }
         }
     }
 
+
     private void processFavorites(LoginRequestDTO request, User user) {
         if (request.getUserFavorites() != null) {
-            Set<UserFavorite> favorites = request.getUserFavorites().stream()
-                    .map(productId -> createUserFavorite(productId, user))
-                    .collect(Collectors.toSet());
-            user.setFavorites(favorites);
+            user.getFavorites().clear();
+            for (Long productId : request.getUserFavorites()) {
+                UserFavorite favorite = createUserFavorite(productId, user);
+                user.getFavorites().add(favorite);
+            }
         }
     }
+
 
     private CartItem createCartItem(CartItemRequestDto request, User user) {
         Product product = productService.findProductByIdOrThrow(request.getProductId());

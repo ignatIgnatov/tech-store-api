@@ -15,9 +15,9 @@ import java.util.Map;
 @AllArgsConstructor
 public class ProductSearchRequest {
     private String query;
-    private String language = "bg"; // Default language
-    private List<Long> categoryIds;
-    private List<Long> manufacturerIds;
+    private String language = "bg";
+    private List<String> categories;
+    private List<String> manufacturers;
     private BigDecimal minPrice;
     private BigDecimal maxPrice;
     private Boolean inStock;
@@ -26,7 +26,6 @@ public class ProductSearchRequest {
     private int page = 0;
     private int size = 20;
 
-    // Faceted search filters
     private Map<String, List<String>> filters; // parameter filters
     private Boolean featured;
     private Boolean onSale;

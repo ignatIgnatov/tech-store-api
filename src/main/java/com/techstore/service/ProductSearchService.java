@@ -53,7 +53,6 @@ public class ProductSearchService {
         }
 
         try {
-            // Sanitize query for suggestions
             String sanitizedQuery = sanitizeQuery(query);
             if (sanitizedQuery.length() < 2) {
                 return Collections.emptyList();

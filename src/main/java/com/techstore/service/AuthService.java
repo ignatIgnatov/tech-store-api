@@ -469,8 +469,6 @@ public class AuthService {
         }
     }
 
-    // ========== PRIVATE HELPER METHODS ==========
-
     private User findUserByUsernameOrThrow(String username) {
         return ExceptionHelper.findOrThrow(
                 userRepository.findByUsername(username).orElse(null),
@@ -556,6 +554,8 @@ public class AuthService {
         cartItem.setUser(user);
         cartItem.setProduct(product);
         cartItem.setQuantity(request.getQuantity());
+        cartItem.setCreatedBy(user.getUsername());
+        cartItem.setLastModifiedBy(user.getUsername());
         return cartItem;
     }
 
@@ -564,6 +564,8 @@ public class AuthService {
         UserFavorite favorite = new UserFavorite();
         favorite.setUser(user);
         favorite.setProduct(product);
+        favorite.setCreatedBy(user.getUsername());
+        favorite.setLastModifiedBy(user.getUsername());
         return favorite;
     }
 
@@ -573,7 +575,6 @@ public class AuthService {
             userRepository.save(user);
         } catch (Exception e) {
             log.error("Failed to update last login time for user {}: {}", user.getUsername(), e.getMessage());
-            // Don't throw exception - this is not critical for login success
         }
     }
 
@@ -584,7 +585,6 @@ public class AuthService {
             log.info("Verification email would be sent to: {} with token: {}", user.getEmail(), verificationToken);
         } catch (Exception e) {
             log.error("Failed to send verification email to {}: {}", user.getEmail(), e.getMessage());
-            // Don't throw exception - user is created successfully, they can request resend
         }
     }
 
@@ -594,7 +594,6 @@ public class AuthService {
             log.info("Password reset email would be sent to: {} with token: {}", user.getEmail(), resetToken);
         } catch (Exception e) {
             log.error("Failed to send password reset email to {}: {}", user.getEmail(), e.getMessage());
-            // Don't throw exception - just log the error
         }
     }
 

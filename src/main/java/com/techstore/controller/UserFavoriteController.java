@@ -41,7 +41,7 @@ public class UserFavoriteController {
     private final SecurityHelper securityHelper;
 
     @GetMapping
-    @PreAuthorize("isAuthenticated()")
+//    @PreAuthorize("isAuthenticated()")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Successfully retrieved favorites"),
             @ApiResponse(responseCode = "400", description = "Invalid parameters"),
@@ -66,7 +66,7 @@ public class UserFavoriteController {
     }
 
     @PostMapping
-    @PreAuthorize("isAuthenticated()")
+//    @PreAuthorize("isAuthenticated()")
     @Operation(
             description = "Adds or removes products from favorites"
     )
@@ -134,7 +134,7 @@ public class UserFavoriteController {
 //    }
 
     @DeleteMapping
-    @PreAuthorize("isAuthenticated()")
+//    @PreAuthorize("isAuthenticated()")
     @Operation(
             summary = "Clear all favorites",
             description = "Removes all products from the favorites list of the current user"
@@ -153,7 +153,7 @@ public class UserFavoriteController {
     }
 
     @GetMapping("/count")
-    @PreAuthorize("isAuthenticated()")
+//    @PreAuthorize("isAuthenticated()")
     @Operation(
             summary = "Get number of favorite products",
             description = "Returns the current number of favorite products and limit information"
@@ -173,7 +173,7 @@ public class UserFavoriteController {
     }
 
     @GetMapping("/check/{productId}")
-    @PreAuthorize("isAuthenticated()")
+//    @PreAuthorize("isAuthenticated()")
     @Operation(
             summary = "Check if product is in favorites",
             description = "Checks whether the specified product is in the current user's favorites list"
@@ -196,7 +196,7 @@ public class UserFavoriteController {
     }
 
     @GetMapping("/limit-reached")
-    @PreAuthorize("isAuthenticated()")
+//    @PreAuthorize("isAuthenticated()")
     @Operation(
             summary = "Check if favorites limit is reached",
             description = "Checks whether the user has reached the maximum number of favorite products"

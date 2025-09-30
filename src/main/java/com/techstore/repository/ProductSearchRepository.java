@@ -37,7 +37,7 @@ public class ProductSearchRepository {
         Map<String, Object> params = new HashMap<>();
 
         sql.append("SELECT p.*, m.name as manufacturer_name, c.")
-                .append(nameField.replace("name_", "name_"))
+                .append(nameField)
                 .append(" as category_name ");
 
         if (StringUtils.hasText(request.getQuery())) {
@@ -65,14 +65,13 @@ public class ProductSearchRepository {
 
         if (StringUtils.hasText(request.getQuery())) {
             whereClause.append("AND (")
-                    // Full-text search with ts_vector
                     .append("to_tsvector('").append(language).append("', ")
                     .append("coalesce(p.").append(nameField).append(", '') || ' ' || ")
                     .append("coalesce(p.").append(descriptionField).append(", '') || ' ' || ")
                     .append("coalesce(p.model, '') || ' ' || ")
                     .append("coalesce(p.reference_number, '')) ")
                     .append("@@ plainto_tsquery('").append(language).append("', :query) OR ")
-                    // Fallback LIKE queries for exact matches
+
                     .append("LOWER(p.model) LIKE LOWER(:likeQuery) OR ")
                     .append("LOWER(p.reference_number) LIKE LOWER(:likeQuery) OR ")
                     .append("p.barcode = :exactQuery OR ")
@@ -91,14 +90,20 @@ public class ProductSearchRepository {
             params.put("maxPrice", request.getMaxPrice());
         }
 
-        if (request.getCategoryIds() != null && !request.getCategoryIds().isEmpty()) {
-            whereClause.append("AND p.category_id IN (:categoryIds) ");
-            params.put("categoryIds", request.getCategoryIds());
+        if (request.getCategories() != null && !request.getCategories().isEmpty()) {
+            whereClause.append("AND (LOWER(c.name_en) IN (:categories) OR LOWER(c.name_bg) IN (:categories)) ");
+            List<String> lowerCategoryNames = request.getCategories().stream()
+                    .map(String::toLowerCase)
+                    .toList();
+            params.put("categories", lowerCategoryNames);
         }
 
-        if (request.getManufacturerIds() != null && !request.getManufacturerIds().isEmpty()) {
-            whereClause.append("AND p.manufacturer_id IN (:manufacturerIds) ");
-            params.put("manufacturerIds", request.getManufacturerIds());
+        if (request.getManufacturers() != null && !request.getManufacturers().isEmpty()) {
+            whereClause.append("AND LOWER(m.name) IN (:manufacturers) ");
+            List<String> lowerManufacturerNames = request.getManufacturers().stream()
+                    .map(String::toLowerCase)
+                    .toList();
+            params.put("manufacturers", lowerManufacturerNames);
         }
 
         if (request.getFeatured() != null) {
@@ -237,5 +242,26 @@ public class ProductSearchRepository {
                 return Collections.emptyList();
             }
         }
+    }
+
+    public List<String> getAvailableManufacturerNames() {
+        String sql = "SELECT DISTINCT name FROM manufacturers WHERE name IS NOT NULL ORDER BY name";
+        return jdbcTemplate.queryForList(sql, String.class);
+    }
+
+    public Map<String, List<String>> getAvailableCategoryNames() {
+        List<String> englishNames = jdbcTemplate.queryForList(
+                "SELECT DISTINCT name_en FROM categories WHERE name_en IS NOT NULL ORDER BY name_en",
+                String.class
+        );
+        List<String> bulgarianNames = jdbcTemplate.queryForList(
+                "SELECT DISTINCT name_bg FROM categories WHERE name_bg IS NOT NULL ORDER BY name_bg",
+                String.class
+        );
+
+        Map<String, List<String>> result = new HashMap<>();
+        result.put("en", englishNames);
+        result.put("bg", bulgarianNames);
+        return result;
     }
 }

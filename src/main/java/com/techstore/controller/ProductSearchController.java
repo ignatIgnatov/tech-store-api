@@ -48,8 +48,8 @@ public class ProductSearchController {
     public ResponseEntity<ProductSearchResponse> searchProductsSimple(
             @RequestParam(required = false) String q,
             @RequestParam(defaultValue = "bg") String lang,
-            @RequestParam(required = false) List<Long> categories,
-            @RequestParam(required = false) List<Long> manufacturers,
+            @RequestParam(required = false) List<String> categories,
+            @RequestParam(required = false) List<String> manufacturers,
             @RequestParam(required = false) BigDecimal minPrice,
             @RequestParam(required = false) BigDecimal maxPrice,
             @RequestParam(defaultValue = "relevance") String sortBy,
@@ -59,8 +59,8 @@ public class ProductSearchController {
         ProductSearchRequest request = ProductSearchRequest.builder()
                 .query(q)
                 .language(lang)
-                .categoryIds(categories)
-                .manufacturerIds(manufacturers)
+                .categories(categories)
+                .manufacturers(manufacturers)
                 .minPrice(minPrice)
                 .maxPrice(maxPrice)
                 .sortBy(sortBy)

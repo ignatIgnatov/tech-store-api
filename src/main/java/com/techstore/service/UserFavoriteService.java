@@ -1,5 +1,6 @@
 package com.techstore.service;
 
+import com.techstore.dto.response.ProductSummaryDto;
 import com.techstore.dto.response.UserFavoriteResponseDto;
 import com.techstore.entity.Product;
 import com.techstore.entity.User;
@@ -7,7 +8,7 @@ import com.techstore.entity.UserFavorite;
 import com.techstore.exception.BusinessLogicException;
 import com.techstore.exception.ResourceNotFoundException;
 import com.techstore.exception.ValidationException;
-import com.techstore.mapper.ProductMapper;
+import com.techstore.mapper.ParameterMapper;
 import com.techstore.repository.ProductRepository;
 import com.techstore.repository.UserFavoriteRepository;
 import com.techstore.repository.UserRepository;
@@ -29,7 +30,7 @@ public class UserFavoriteService {
     private final UserFavoriteRepository userFavoriteRepository;
     private final UserRepository userRepository;
     private final ProductRepository productRepository;
-    private final ProductMapper productMapper;
+    private final ParameterMapper parameterMapper;
 
     // Maximum favorites per user to prevent abuse
     private static final int MAX_FAVORITES_PER_USER = 1000;
@@ -332,19 +333,24 @@ public class UserFavoriteService {
         );
     }
 
-//    private UserFavorite findFavoriteByIdOrThrow(Long favoriteId) {
-//        return ExceptionHelper.findOrThrow(
-//                userFavoriteRepository.findById(favoriteId).orElse(null),
-//                "UserFavorite",
-//                favoriteId
-//        );
-//    }
-
     public UserFavoriteResponseDto convertToResponseDto(UserFavorite favorite, String language) {
         UserFavoriteResponseDto dto = new UserFavoriteResponseDto();
         dto.setId(favorite.getId());
-        dto.setProduct(productMapper.toSummaryDto(favorite.getProduct(), language));
+        dto.setProduct(convertProductToResponseDTO(favorite.getProduct(), language));
         dto.setCreatedAt(favorite.getCreatedAt());
+        return dto;
+    }
+
+    private ProductSummaryDto convertProductToResponseDTO(Product product, String lang) {
+        ProductSummaryDto dto = new ProductSummaryDto();
+        dto.setId(product.getId());
+        dto.setNameEn(product.getNameEn());
+        dto.setNameBg(product.getNameBg());
+        dto.setFinalPrice(product.getFinalPrice());
+
+        if (product.getPrimaryImageUrl() != null) {
+            dto.setPrimaryImageUrl("/api/images/product/" + product.getId() + "/primary");
+        }
         return dto;
     }
 }

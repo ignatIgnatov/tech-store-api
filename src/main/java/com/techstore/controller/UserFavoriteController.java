@@ -89,50 +89,6 @@ public class UserFavoriteController {
         return ResponseEntity.ok(!wasInFavorites);
     }
 
-//    @DeleteMapping("/product/{productId}")
-//    @PreAuthorize("isAuthenticated()")
-//    @ApiResponses({
-//            @ApiResponse(responseCode = "200", description = "Product successfully removed"),
-//            @ApiResponse(responseCode = "400", description = "Invalid product ID"),
-//            @ApiResponse(responseCode = "401", description = "Unauthenticated user"),
-//            @ApiResponse(responseCode = "403", description = "Access denied"),
-//            @ApiResponse(responseCode = "404", description = "Product not found in favorites")
-//    })
-//    public ResponseEntity<Void> removeFromFavorites(
-//            @Parameter(description = "ID of the product to remove", example = "1", required = true)
-//            @PathVariable Long productId) {
-//
-//        Long userId = securityHelper.getCurrentUserId();
-//        log.info("Removing product {} from favorites for user {}", productId, userId);
-//
-//        userFavoriteService.removeFromFavorites(userId, productId);
-//        return ResponseEntity.ok().build();
-//    }
-
-//    @DeleteMapping("/{favoriteId}")
-//    @PreAuthorize("isAuthenticated()")
-//    @Operation(
-//            summary = "Remove favorite by ID",
-//            description = "Removes a favorite entry by its ID"
-//    )
-//    @ApiResponses({
-//            @ApiResponse(responseCode = "200", description = "Favorite successfully removed"),
-//            @ApiResponse(responseCode = "400", description = "Invalid favorite ID"),
-//            @ApiResponse(responseCode = "401", description = "Unauthenticated user"),
-//            @ApiResponse(responseCode = "403", description = "Access denied or entry does not belong to the user"),
-//            @ApiResponse(responseCode = "404", description = "Favorite not found")
-//    })
-//    public ResponseEntity<Void> removeFromFavoritesById(
-//            @Parameter(description = "ID of the favorite entry", example = "1", required = true)
-//            @PathVariable Long favoriteId) {
-//
-//        Long userId = securityHelper.getCurrentUserId();
-//        log.info("Removing favorite {} for user {}", favoriteId, userId);
-//
-//        userFavoriteService.removeFromFavoritesByFavoriteId(userId, favoriteId);
-//        return ResponseEntity.ok().build();
-//    }
-
     @DeleteMapping
 //    @PreAuthorize("isAuthenticated()")
     @Operation(

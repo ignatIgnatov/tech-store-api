@@ -506,7 +506,8 @@ public class AuthService {
                 registerRequest.getLastName().trim() : null);
         user.setRole(User.Role.USER);
         user.setActive(true);
-        user.setEmailVerified(false);
+        user.setEmailVerified(true);
+        user.setPhone(registerRequest.getPhone());
 
         user = userRepository.save(user);
 
@@ -626,6 +627,7 @@ public class AuthService {
                 .fullName(user.getFullName())
                 .cartItems(cartItems)
                 .userFavorites(userFavorites)
+                .phone(user.getPhone())
                 .build();
     }
 }

@@ -1,7 +1,7 @@
 package com.techstore.service;
 
 import com.techstore.dto.filter.AdvancedFilterRequestDTO;
-import com.techstore.dto.ProductResponseDTO;
+import com.techstore.dto.response.ProductResponseDTO;
 import com.techstore.dto.response.CategorySummaryDTO;
 import com.techstore.dto.response.ManufacturerSummaryDto;
 import com.techstore.dto.response.ProductParameterResponseDto;

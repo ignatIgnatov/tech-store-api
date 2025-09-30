@@ -1,6 +1,5 @@
 package com.techstore.service;
 
-import com.techstore.dto.ProductResponseDTO;
 import com.techstore.dto.request.ProductCreateRequestDTO;
 import com.techstore.dto.request.ProductImageOperationsDTO;
 import com.techstore.dto.request.ProductImageUpdateDTO;
@@ -11,6 +10,7 @@ import com.techstore.dto.response.ManufacturerSummaryDto;
 import com.techstore.dto.response.ParameterOptionResponseDto;
 import com.techstore.dto.response.ProductImageUploadResponseDTO;
 import com.techstore.dto.response.ProductParameterResponseDto;
+import com.techstore.dto.response.ProductResponseDTO;
 import com.techstore.entity.Category;
 import com.techstore.entity.Manufacturer;
 import com.techstore.entity.Parameter;

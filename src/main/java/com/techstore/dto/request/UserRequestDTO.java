@@ -37,6 +37,8 @@ public class UserRequestDTO {
     @Size(max = 100, message = "Last name must not exceed 100 characters")
     private String lastName;
 
+    private String phone;
+
     private String role;
 
     private Boolean active = true;

@@ -3,11 +3,12 @@ package com.techstore.service;
 import com.techstore.dto.request.CartItemRequestDto;
 import com.techstore.dto.response.CartItemResponseDto;
 import com.techstore.dto.response.CartSummaryDto;
+import com.techstore.dto.response.ProductSummaryDto;
 import com.techstore.entity.CartItem;
 import com.techstore.entity.Product;
 import com.techstore.entity.User;
 import com.techstore.exception.ResourceNotFoundException;
-import com.techstore.mapper.ProductMapper;
+import com.techstore.mapper.ParameterMapper;
 import com.techstore.repository.CartItemRepository;
 import com.techstore.repository.ProductRepository;
 import com.techstore.repository.UserRepository;
@@ -28,7 +29,7 @@ public class CartService {
     private final CartItemRepository cartItemRepository;
     private final UserRepository userRepository;
     private final ProductRepository productRepository;
-    private final ProductMapper productMapper;
+    private final ParameterMapper parameterMapper;
 
     public CartSummaryDto getCartSummary(Long userId, String language) {
         List<CartItem> cartItems = cartItemRepository.findByUserIdOrderByCreatedAtAsc(userId);
@@ -118,11 +119,24 @@ public class CartService {
     public CartItemResponseDto mapToCartItemResponse(CartItem cartItem, Product cartItem1, String language) {
         CartItemResponseDto dto = new CartItemResponseDto();
         dto.setId(cartItem.getId());
-        dto.setProduct(productMapper.toSummaryDto(cartItem1, language));
+        dto.setProduct(convertProductToResponseDTO(cartItem.getProduct(), language));
         dto.setQuantity(cartItem.getQuantity());
         dto.setItemTotal(cartItem1.getFinalPrice().multiply(BigDecimal.valueOf(cartItem.getQuantity())));
         dto.setCreatedAt(cartItem.getCreatedAt());
         dto.setUpdatedAt(cartItem.getUpdatedAt());
+        return dto;
+    }
+
+    private ProductSummaryDto convertProductToResponseDTO(Product product, String lang) {
+        ProductSummaryDto dto = new ProductSummaryDto();
+        dto.setId(product.getId());
+        dto.setNameEn(product.getNameEn());
+        dto.setNameBg(product.getNameBg());
+        dto.setFinalPrice(product.getFinalPrice());
+
+        if (product.getPrimaryImageUrl() != null) {
+            dto.setPrimaryImageUrl("/api/images/product/" + product.getId() + "/primary");
+        }
         return dto;
     }
 }

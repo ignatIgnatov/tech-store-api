@@ -1,9 +1,5 @@
-package com.techstore.dto;
+package com.techstore.dto.response;
 
-import com.techstore.dto.response.CategorySummaryDTO;
-import com.techstore.dto.response.ManufacturerSummaryDto;
-import com.techstore.dto.response.ProductParameterResponseDto;
-import com.techstore.entity.ProductParameter;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;

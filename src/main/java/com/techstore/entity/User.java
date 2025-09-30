@@ -68,6 +68,8 @@ public class User extends BaseEntity implements UserDetails {
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
     private Set<UserFavorite> favorites = new HashSet<>();
 
+    private String phone;
+
     public enum Role {
         USER, ADMIN, SUPER_ADMIN
     }

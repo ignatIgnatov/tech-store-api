@@ -37,6 +37,10 @@ public class TekraApiService {
     @Value("${tekra.api.enabled:false}")
     private boolean tekraApiEnabled;
 
+    private final Map<String, List<Map<String, Object>>> productsCache = new HashMap<>();
+    private long cacheTimestamp = 0;
+    private static final long CACHE_DURATION_MS = 5 * 60 * 1000;
+
     /**
      * Get categories using JSON parsing (categories return JSON)
      */
@@ -68,51 +72,6 @@ public class TekraApiService {
 
         } catch (Exception e) {
             log.error("Error fetching categories from Tekra API", e);
-            return new ArrayList<>();
-        }
-    }
-
-    /**
-     * Get products using XML parsing (products return XML!)
-     */
-    public List<Map<String, Object>> getProductsRaw(String categorySlug) {
-        if (!tekraApiEnabled) {
-            log.warn("Tekra API is disabled");
-            return new ArrayList<>();
-        }
-
-        try {
-            log.info("Fetching products for category: {} (XML parsing)", categorySlug);
-
-            String url = UriComponentsBuilder.fromHttpUrl(baseUrl)
-                    .queryParam("action", "browse")
-                    .queryParam("catSlug", categorySlug)
-                    .queryParam("page", 1)
-                    .queryParam("perPage", 10)
-                    .queryParam("allProducts", 0)
-                    .queryParam("in_stock", 1)
-                    .queryParam("out_of_stock", 1)
-                    .queryParam("order", "bestsellers")
-                    .queryParam("feed", 1)
-                    .queryParam("access_token_feed", accessToken)
-                    .toUriString();
-
-            // Get XML response as String
-            String xmlResponse = restTemplate.getForObject(url, String.class);
-
-            if (xmlResponse == null) {
-                log.error("Received null XML response from Tekra API for products");
-                return new ArrayList<>();
-            }
-
-            log.debug("Raw XML response length: {}", xmlResponse.length());
-
-            List<Map<String, Object>> products = parseProductsFromXML(xmlResponse);
-            log.info("Extracted {} products from Tekra XML response", products.size());
-            return products;
-
-        } catch (Exception e) {
-            log.error("Error fetching products from Tekra API", e);
             return new ArrayList<>();
         }
     }
@@ -366,6 +325,144 @@ public class TekraApiService {
         } catch (Exception e) {
             log.error("Error getting raw products XML", e);
             return "Error: " + e.getMessage();
+        }
+    }
+
+    /**
+     * Get all products for a category with pagination support
+     * (Add this method to TekraApiService.java)
+     */
+    public List<Map<String, Object>> getAllProductsForCategory(String categorySlug) {
+        if (!tekraApiEnabled) {
+            log.warn("Tekra API is disabled");
+            return new ArrayList<>();
+        }
+
+        List<Map<String, Object>> allProducts = new ArrayList<>();
+        int page = 1;
+        int perPage = 100; // Fetch 100 products per page
+        boolean hasMore = true;
+
+        try {
+            log.info("Fetching all products for category: {} with pagination", categorySlug);
+
+            while (hasMore) {
+                String url = UriComponentsBuilder.fromHttpUrl(baseUrl)
+                        .queryParam("action", "browse")
+                        .queryParam("catSlug", categorySlug)
+                        .queryParam("page", page)
+                        .queryParam("perPage", perPage)
+                        .queryParam("allProducts", 0)
+                        .queryParam("in_stock", 1)
+                        .queryParam("out_of_stock", 1)
+                        .queryParam("order", "bestsellers")
+                        .queryParam("feed", 1)
+                        .queryParam("access_token_feed", accessToken)
+                        .toUriString();
+
+                String xmlResponse = restTemplate.getForObject(url, String.class);
+
+                if (xmlResponse == null) {
+                    log.error("Received null XML response from Tekra API for page {}", page);
+                    break;
+                }
+
+                List<Map<String, Object>> pageProducts = parseProductsFromXML(xmlResponse);
+
+                if (pageProducts.isEmpty()) {
+                    log.info("No more products found on page {}", page);
+                    hasMore = false;
+                } else {
+                    allProducts.addAll(pageProducts);
+                    log.info("Fetched {} products from page {} (total so far: {})",
+                            pageProducts.size(), page, allProducts.size());
+
+                    // If we got fewer products than perPage, we're on the last page
+                    if (pageProducts.size() < perPage) {
+                        hasMore = false;
+                    } else {
+                        page++;
+                        // Small delay to avoid overwhelming the API
+                        Thread.sleep(200);
+                    }
+                }
+            }
+
+            log.info("Fetched total of {} products for category: {}", allProducts.size(), categorySlug);
+            return allProducts;
+
+        } catch (Exception e) {
+            log.error("Error fetching all products for category {}", categorySlug, e);
+            return allProducts; // Return what we managed to fetch
+        }
+    }
+
+    /**
+     * Clear the products cache (call this before starting a full sync)
+     */
+    public void clearCache() {
+        productsCache.clear();
+        cacheTimestamp = 0;
+        log.info("Cleared Tekra API products cache");
+    }
+
+    /**
+     * Check if cache is still valid
+     */
+    private boolean isCacheValid() {
+        return (System.currentTimeMillis() - cacheTimestamp) < CACHE_DURATION_MS;
+    }
+
+    /**
+     * Get products with caching support (updated version)
+     */
+    public List<Map<String, Object>> getProductsRaw(String categorySlug) {
+        if (!tekraApiEnabled) {
+            log.warn("Tekra API is disabled");
+            return new ArrayList<>();
+        }
+
+        // Check cache first
+        if (isCacheValid() && productsCache.containsKey(categorySlug)) {
+            log.debug("Returning cached products for category: {}", categorySlug);
+            return productsCache.get(categorySlug);
+        }
+
+        try {
+            log.info("Fetching products for category: {} (XML parsing)", categorySlug);
+
+            String url = UriComponentsBuilder.fromHttpUrl(baseUrl)
+                    .queryParam("action", "browse")
+                    .queryParam("catSlug", categorySlug)
+                    .queryParam("page", 1)
+                    .queryParam("perPage", 100)
+                    .queryParam("allProducts", 0)
+                    .queryParam("in_stock", 1)
+                    .queryParam("out_of_stock", 1)
+                    .queryParam("order", "bestsellers")
+                    .queryParam("feed", 1)
+                    .queryParam("access_token_feed", accessToken)
+                    .toUriString();
+
+            String xmlResponse = restTemplate.getForObject(url, String.class);
+
+            if (xmlResponse == null) {
+                log.error("Received null XML response from Tekra API for products");
+                return new ArrayList<>();
+            }
+
+            List<Map<String, Object>> products = parseProductsFromXML(xmlResponse);
+
+            // Update cache
+            productsCache.put(categorySlug, products);
+            cacheTimestamp = System.currentTimeMillis();
+
+            log.info("Extracted {} products from Tekra XML response (cached)", products.size());
+            return products;
+
+        } catch (Exception e) {
+            log.error("Error fetching products from Tekra API", e);
+            return new ArrayList<>();
         }
     }
 }

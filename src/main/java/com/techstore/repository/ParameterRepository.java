@@ -35,4 +35,6 @@ public interface ParameterRepository extends JpaRepository<Parameter, Long> {
     Optional<Parameter> findByCategoryAndNameBg(Category category, String nameBg);
 
     List<Parameter> findByCategoryId(Long categoryId);
+
+    long countByCategoryId(Long categoryId);
 }

@@ -80,4 +80,8 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
     List<Product> findAllByCategoryId(Long categoryId);
 
     Optional<Product> findBySku(String sku);
+
+    long countByCategoryId(Long categoryId);
+
+    List<Product> findByCategoryId(Long categoryId);
 }

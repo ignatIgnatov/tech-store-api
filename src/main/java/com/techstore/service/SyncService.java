@@ -31,6 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -517,21 +518,26 @@ public class SyncService {
 
             log.info("Found main category 'videonablyudenie' with id: {}", getString(mainCategory, "id"));
 
-            // Use composite key: tekra_id + parent_tekra_id for unique identification
+            // Build existing categories map using BOTH tekra_id AND tekra_slug for uniqueness
             Map<String, Category> existingCategories = categoryRepository.findAll()
                     .stream()
                     .filter(cat -> cat.getTekraId() != null)
                     .collect(Collectors.toMap(
-                            cat -> createCategoryKey(cat.getTekraId(), cat.getParent()),
-                            cat -> cat
+                            cat -> cat.getTekraSlug() != null ? cat.getTekraSlug() : cat.getTekraId(),
+                            cat -> cat,
+                            (existing, duplicate) -> {
+                                log.warn("Duplicate category found: keeping ID {}, discarding ID {}",
+                                        existing.getId(), duplicate.getId());
+                                return existing; // Keep first one
+                            }
                     ));
 
             long created = 0, updated = 0, skipped = 0;
 
             // Step 1: Create/update main category
-            Category mainCat = createOrUpdateCategoryEnhanced(mainCategory, existingCategories, null);
+            Category mainCat = createOrUpdateTekraCategory(mainCategory, existingCategories, null);
             if (mainCat != null) {
-                String mainKey = createCategoryKey(mainCat.getTekraId(), null);
+                String mainKey = mainCat.getTekraSlug();
                 if (existingCategories.containsKey(mainKey)) {
                     updated++;
                 } else {
@@ -551,18 +557,19 @@ public class SyncService {
                 for (Map<String, Object> subCat : subCategories) {
                     try {
                         String subCatId = getString(subCat, "id");
+                        String subCatSlug = getString(subCat, "slug");
                         String subCatName = getString(subCat, "name");
 
-                        if (subCatId == null || subCatName == null) {
-                            log.warn("Skipping subcategory with missing fields: id={}, name={}", subCatId, subCatName);
+                        if (subCatId == null || subCatSlug == null || subCatName == null) {
+                            log.warn("Skipping subcategory with missing fields");
                             skipped++;
                             continue;
                         }
 
-                        // Create/update level 2 category with mainCat as parent
-                        Category level2Cat = createOrUpdateCategoryEnhanced(subCat, existingCategories, mainCat);
+                        // Create/update level 2 category
+                        Category level2Cat = createOrUpdateTekraCategory(subCat, existingCategories, mainCat);
                         if (level2Cat != null) {
-                            String level2Key = createCategoryKey(level2Cat.getTekraId(), mainCat);
+                            String level2Key = level2Cat.getTekraSlug();
                             if (existingCategories.containsKey(level2Key)) {
                                 updated++;
                             } else {
@@ -576,27 +583,22 @@ public class SyncService {
                                 @SuppressWarnings("unchecked")
                                 List<Map<String, Object>> subSubCategories = (List<Map<String, Object>>) subSubCatObj;
 
-                                if (!subSubCategories.isEmpty()) {
-                                    log.debug("Found {} level-3 categories under '{}'",
-                                            subSubCategories.size(), subCatName);
-                                }
-
                                 for (Map<String, Object> subSubCat : subSubCategories) {
                                     try {
                                         String subSubCatId = getString(subSubCat, "id");
+                                        String subSubCatSlug = getString(subSubCat, "slug");
                                         String subSubCatName = getString(subSubCat, "name");
 
-                                        if (subSubCatId == null || subSubCatName == null) {
-                                            log.warn("Skipping level-3 category with missing fields: id={}, name={}",
-                                                    subSubCatId, subSubCatName);
+                                        if (subSubCatId == null || subSubCatSlug == null || subSubCatName == null) {
+                                            log.warn("Skipping level-3 category with missing fields");
                                             skipped++;
                                             continue;
                                         }
 
-                                        // Create/update level 3 category with level2Cat as parent
-                                        Category level3Cat = createOrUpdateCategoryEnhanced(subSubCat, existingCategories, level2Cat);
+                                        // Create/update level 3 category
+                                        Category level3Cat = createOrUpdateTekraCategory(subSubCat, existingCategories, level2Cat);
                                         if (level3Cat != null) {
-                                            String level3Key = createCategoryKey(level3Cat.getTekraId(), level2Cat);
+                                            String level3Key = level3Cat.getTekraSlug();
                                             if (existingCategories.containsKey(level3Key)) {
                                                 updated++;
                                             } else {
@@ -632,6 +634,66 @@ public class SyncService {
             log.error("Error during Tekra categories synchronization", e);
             throw e;
         }
+    }
+
+    @Transactional
+    public void fixDuplicateCategories() {
+        log.info("Checking for duplicate Tekra categories...");
+
+        // Find all Tekra categories
+        List<Category> allTekraCategories = categoryRepository.findAll().stream()
+                .filter(cat -> cat.getTekraSlug() != null)
+                .toList();
+
+        // Group by name to find duplicates
+        Map<String, List<Category>> categoriesByName = allTekraCategories.stream()
+                .collect(Collectors.groupingBy(Category::getNameBg));
+
+        int duplicatesFound = 0;
+        int duplicatesRemoved = 0;
+
+        for (Map.Entry<String, List<Category>> entry : categoriesByName.entrySet()) {
+            String name = entry.getKey();
+            List<Category> categories = entry.getValue();
+
+            if (categories.size() > 1) {
+                duplicatesFound++;
+                log.warn("Found {} duplicate categories with name: '{}'", categories.size(), name);
+
+                // Keep the one with the most complete data or the first one
+                Category categoryToKeep = categories.stream()
+                        .max(Comparator.comparing(cat -> cat.getId()))
+                        .orElse(categories.get(0));
+
+                log.info("Keeping category with ID: {}, tekra_id: {}, slug: {}",
+                        categoryToKeep.getId(), categoryToKeep.getTekraId(), categoryToKeep.getTekraSlug());
+
+                // Remove all others
+                for (Category duplicate : categories) {
+                    if (!duplicate.getId().equals(categoryToKeep.getId())) {
+                        try {
+                            // Check if any products use this category
+                            long productCount = productRepository.countByCategoryId(duplicate.getId());
+                            if (productCount > 0) {
+                                log.warn("Category {} has {} products, reassigning to kept category",
+                                        duplicate.getId(), productCount);
+                                // Reassign products to the kept category
+                                productRepository.updateCategoryForProducts(duplicate.getId(), categoryToKeep.getId());
+                            }
+
+                            categoryRepository.delete(duplicate);
+                            duplicatesRemoved++;
+                            log.info("Deleted duplicate category with ID: {}", duplicate.getId());
+                        } catch (Exception e) {
+                            log.error("Error deleting duplicate category {}: {}", duplicate.getId(), e.getMessage());
+                        }
+                    }
+                }
+            }
+        }
+
+        log.info("Duplicate categories cleanup complete - Found: {}, Removed: {}",
+                duplicatesFound, duplicatesRemoved);
     }
 
     @Transactional
@@ -2437,5 +2499,73 @@ public class SyncService {
         return parameters;
     }
 
+    private Category createOrUpdateTekraCategory(Map<String, Object> rawData,
+                                                 Map<String, Category> existingCategories,
+                                                 Category parentCategory) {
+        try {
+            String tekraId = getString(rawData, "id");
+            String slug = getString(rawData, "slug");
+            String name = getString(rawData, "name");
+
+            if (tekraId == null || slug == null || name == null) {
+                log.warn("Cannot create category with missing required fields");
+                return null;
+            }
+
+            // Use slug as the unique key (not name, which can have duplicates)
+            Category category = existingCategories.get(slug);
+
+            if (category == null) {
+                // Try to find in database by tekra_slug
+                Optional<Category> foundCategory = categoryRepository.findByTekraSlug(slug);
+
+                if (foundCategory.isPresent()) {
+                    category = foundCategory.get();
+                    log.debug("Found existing category by slug: {}", slug);
+                } else {
+                    // Create new category
+                    category = new Category();
+                    category.setTekraId(tekraId);
+                    log.info("Creating NEW category: {} (slug: {})", name, slug);
+                }
+            }
+
+            // Update fields
+            category.setTekraSlug(slug);
+            category.setSlug(slug); // Use Tekra slug directly
+            category.setNameBg(name);
+            category.setNameEn(name);
+            category.setParent(parentCategory);
+
+            // Set show based on product count
+            String countStr = getString(rawData, "count");
+            if (countStr != null) {
+                try {
+                    Integer count = Integer.parseInt(countStr);
+                    category.setSortOrder(count);
+                    category.setShow(count > 0);
+                } catch (NumberFormatException e) {
+                    category.setSortOrder(0);
+                    category.setShow(true);
+                }
+            } else {
+                category.setShow(true);
+                category.setSortOrder(0);
+            }
+
+            category = categoryRepository.save(category);
+
+            String parentInfo = parentCategory != null ?
+                    " (parent: " + parentCategory.getNameBg() + ")" : " (ROOT)";
+            log.debug("Saved category: {} {} (slug: {}, id: {})",
+                    name, parentInfo, slug, category.getId());
+
+            return category;
+
+        } catch (Exception e) {
+            log.error("Error creating/updating category from Tekra data: {}", e.getMessage());
+            return null;
+        }
+    }
 
 }

@@ -92,7 +92,9 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
     @Query("SELECT p.externalId, COUNT(p) FROM Product p WHERE p.externalId IS NOT NULL GROUP BY p.externalId HAVING COUNT(p) > 1")
     List<Object[]> findDuplicateProductsByExternalId();
+
     ;
+
     @Query("SELECT p FROM Product p WHERE p.externalId = :externalId")
     List<Product> findProductsByExternalId(@Param("externalId") Long externalId);
 

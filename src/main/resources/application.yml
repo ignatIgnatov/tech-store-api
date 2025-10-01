@@ -150,8 +150,8 @@ app:
         tekra:
             enabled: true
             wildlife-surveillance-only: true
-            auto-sync: false
-            sync-cron: "0 0 2 * * ?"
+            auto-sync: true
+            sync-cron: "0 0 4 * * ?"
             surveillance-categories:
                 - videonablyudenie
                 - ip-kameri

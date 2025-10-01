@@ -16,6 +16,4 @@ public interface ParameterOptionRepository extends JpaRepository<ParameterOption
     List<ParameterOption> findByParameterIdOrderByOrderAsc(Long parameterId);
 
     Optional<ParameterOption> findByParameterAndNameBg(Parameter parameter, String nameBg);
-
-
 }

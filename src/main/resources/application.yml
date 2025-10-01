@@ -118,7 +118,7 @@ logging:
         org.springframework.security.config.annotation.authentication.configuration.InitializeUserDetailsBeanManagerConfigurer: ERROR
         org.springframework.security.web.FilterChainProxy: WARN
         org.hibernate.type.descriptor.sql.BasicBinder: ERROR
-        com.techstore: WARN
+        com.techstore: warn
     pattern:
         console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
         file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"

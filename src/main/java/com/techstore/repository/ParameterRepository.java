@@ -37,4 +37,6 @@ public interface ParameterRepository extends JpaRepository<Parameter, Long> {
     List<Parameter> findByCategoryId(Long categoryId);
 
     long countByCategoryId(Long categoryId);
+
+    Optional<Parameter> findByTekraKeyAndCategoryId(String tekraKey, Long categoryId);
 }

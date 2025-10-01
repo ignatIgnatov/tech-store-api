@@ -84,4 +84,16 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
     long countByCategoryId(Long categoryId);
 
     List<Product> findByCategoryId(Long categoryId);
+
+    @Query("SELECT p.sku, COUNT(p) FROM Product p WHERE p.sku IS NOT NULL GROUP BY p.sku HAVING COUNT(p) > 1")
+    List<Object[]> findDuplicateProductsBySku();
+
+    @Query("SELECT p.externalId, COUNT(p) FROM Product p WHERE p.externalId IS NOT NULL GROUP BY p.externalId HAVING COUNT(p) > 1")
+    List<Object[]> findDuplicateProductsByExternalId();
+    ;
+    @Query("SELECT p FROM Product p WHERE p.externalId = :externalId")
+    List<Product> findProductsByExternalId(@Param("externalId") Long externalId);
+
+    @Query("SELECT p FROM Product p WHERE p.sku = :sku")
+    List<Product> findProductsBySkuCode(@Param("sku") String sku);
 }

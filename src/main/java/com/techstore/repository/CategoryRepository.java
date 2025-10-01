@@ -28,5 +28,5 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
 
     Optional<Category> findByNameEn(String nameEn);
 
-
+    List<Category> findByParentId(Long parentId);
 }

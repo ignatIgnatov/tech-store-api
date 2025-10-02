@@ -117,16 +117,4 @@ public class TekraController {
             return ResponseEntity.status(500).body(response);
         }
     }
-
-    @GetMapping("/admin/debug-tekra")
-    public String debugTekra() {
-        syncService.debugTekraStructure();
-        return "Check logs";
-    }
-
-    @GetMapping("/admin/debug-analog")
-    public String debugAnalog() {
-        syncService.debugHdAnalogCategory();
-        return "Check logs";
-    }
 }

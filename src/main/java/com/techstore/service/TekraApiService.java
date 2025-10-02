@@ -328,72 +328,49 @@ public class TekraApiService {
         }
     }
 
-    /**
-     * Get all products for a category with pagination support
-     * (Add this method to TekraApiService.java)
-     */
     public List<Map<String, Object>> getAllProductsForCategory(String categorySlug) {
         if (!tekraApiEnabled) {
             log.warn("Tekra API is disabled");
             return new ArrayList<>();
         }
 
-        List<Map<String, Object>> allProducts = new ArrayList<>();
-        int page = 1;
-        int perPage = 100; // Fetch 100 products per page
-        boolean hasMore = true;
-
         try {
-            log.info("Fetching all products for category: {} with pagination", categorySlug);
+            log.info("Fetching all products for category: {}", categorySlug);
 
-            while (hasMore) {
-                String url = UriComponentsBuilder.fromHttpUrl(baseUrl)
-                        .queryParam("action", "browse")
-                        .queryParam("catSlug", categorySlug)
-                        .queryParam("page", page)
-                        .queryParam("perPage", perPage)
-                        .queryParam("allProducts", 0)
-                        .queryParam("in_stock", 1)
-                        .queryParam("out_of_stock", 1)
-                        .queryParam("order", "bestsellers")
-                        .queryParam("feed", 1)
-                        .queryParam("access_token_feed", accessToken)
-                        .toUriString();
+            // ✅ ОПРОСТЕНО: Tekra API връща ВСИЧКИ продукти на първата страница
+            String url = UriComponentsBuilder.fromHttpUrl(baseUrl)
+                    .queryParam("action", "browse")
+                    .queryParam("catSlug", categorySlug)
+                    .queryParam("page", 1)
+                    .queryParam("perPage", 1000)  // Голямо число
+                    .queryParam("allProducts", 0)
+                    .queryParam("in_stock", 1)
+                    .queryParam("out_of_stock", 1)
+                    .queryParam("order", "bestsellers")
+                    .queryParam("feed", 1)
+                    .queryParam("access_token_feed", accessToken)
+                    .toUriString();
 
-                String xmlResponse = restTemplate.getForObject(url, String.class);
+            String xmlResponse = restTemplate.getForObject(url, String.class);
 
-                if (xmlResponse == null) {
-                    log.error("Received null XML response from Tekra API for page {}", page);
-                    break;
-                }
-
-                List<Map<String, Object>> pageProducts = parseProductsFromXML(xmlResponse);
-
-                if (pageProducts.isEmpty()) {
-                    log.info("No more products found on page {}", page);
-                    hasMore = false;
-                } else {
-                    allProducts.addAll(pageProducts);
-                    log.info("Fetched {} products from page {} (total so far: {})",
-                            pageProducts.size(), page, allProducts.size());
-
-                    // If we got fewer products than perPage, we're on the last page
-                    if (pageProducts.size() < perPage) {
-                        hasMore = false;
-                    } else {
-                        page++;
-                        // Small delay to avoid overwhelming the API
-                        Thread.sleep(200);
-                    }
-                }
+            if (xmlResponse == null) {
+                log.error("Received null XML response");
+                return new ArrayList<>();
             }
 
-            log.info("Fetched total of {} products for category: {}", allProducts.size(), categorySlug);
-            return allProducts;
+            List<Map<String, Object>> products = parseProductsFromXML(xmlResponse);
+
+            log.info("Fetched {} products for category: {}", products.size(), categorySlug);
+
+            // Update cache
+            productsCache.put(categorySlug, products);
+            cacheTimestamp = System.currentTimeMillis();
+
+            return products;
 
         } catch (Exception e) {
-            log.error("Error fetching all products for category {}", categorySlug, e);
-            return allProducts; // Return what we managed to fetch
+            log.error("Error fetching products for category {}", categorySlug, e);
+            return new ArrayList<>();
         }
     }
 

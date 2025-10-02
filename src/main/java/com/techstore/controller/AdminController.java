@@ -74,26 +74,9 @@ public class AdminController {
         }
     }
 
-    @PostMapping("/sync/products-by-category")
-    public ResponseEntity<String> syncProductsByCat(@RequestParam("id") Long id) {
-        try {
-            syncService.syncProductsByCategory(id);
-            return ResponseEntity.ok("Products synchronization completed successfully");
-        } catch (Exception e) {
-            log.error("Error during manual products synchronization", e);
-            return ResponseEntity.internalServerError().body("Error during synchronization: " + e.getMessage());
-        }
-    }
-
-    @PostMapping("/sync/all")
-//    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<String> syncAll() {
-        try {
-            syncService.fetchAll();
-            return ResponseEntity.ok("Full synchronization completed successfully");
-        } catch (Exception e) {
-            log.error("Error during manual full synchronization", e);
-            return ResponseEntity.internalServerError().body("Error during synchronization: " + e.getMessage());
-        }
+    @GetMapping("/admin/debug-category-paths")
+    public String debugPaths() {
+        syncService.debugCategoryPathMatching();
+        return "Check logs";
     }
 }

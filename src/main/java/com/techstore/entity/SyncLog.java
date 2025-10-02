@@ -6,6 +6,8 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.time.LocalDateTime;
+
 @Entity
 @Table(name = "sync_logs")
 @Getter
@@ -32,4 +34,18 @@ public class SyncLog extends BaseEntity {
 
     @Column(name = "duration_ms")
     private Long durationMs;
+
+//    private LocalDateTime startedAt;
+//
+//    private long totalRecords;
+//
+//    private long createdRecords;
+//
+//    private long updatedRecords;
+//
+//    private long errorRecords;
+//
+//    private String message;
+//
+//    private LocalDateTime finishedAt;
 }

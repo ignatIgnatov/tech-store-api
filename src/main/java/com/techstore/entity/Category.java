@@ -69,14 +69,29 @@ public class Category extends BaseEntity {
         Category current = this;
 
         while (current != null) {
-            if (current.getTekraSlug() != null) {
+            if (current.getTekraSlug() != null && !current.getTekraSlug().trim().isEmpty()) {
                 pathParts.add(0, current.getTekraSlug());
-            } else if (current.getSlug() != null) {
-                pathParts.add(0, current.getSlug());
+            }
+            else if (current.getSlug() != null) {
+                String baseSlug = extractBaseSlug(current.getSlug(), current.getParent());
+                pathParts.add(0, baseSlug);
             }
             current = current.getParent();
         }
 
-        return String.join("/", pathParts);
+        return pathParts.isEmpty() ? null : String.join("/", pathParts);
+    }
+
+    private String extractBaseSlug(String fullSlug, Category parent) {
+        if (parent == null || parent.getSlug() == null) {
+            return fullSlug;
+        }
+
+        String parentSlug = parent.getSlug();
+        if (fullSlug.startsWith(parentSlug + "-")) {
+            return fullSlug.substring(parentSlug.length() + 1);
+        }
+
+        return fullSlug;
     }
 }

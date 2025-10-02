@@ -54,7 +54,7 @@ public class ProductSearchController {
             @RequestParam(required = false) BigDecimal maxPrice,
             @RequestParam(defaultValue = "relevance") String sortBy,
             @RequestParam(defaultValue = "0") @Min(0) int page,
-            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+            @RequestParam(defaultValue = "50") @Min(1) @Max(100) int size) {
 
         ProductSearchRequest request = ProductSearchRequest.builder()
                 .query(q)

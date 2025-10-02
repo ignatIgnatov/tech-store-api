@@ -286,7 +286,7 @@ public class SyncService {
         long startTime = System.currentTimeMillis();
 
         try {
-            log.info("Starting Tekra categories synchronization with nested subcategories");
+            log.info("Starting Tekra categories synchronization with parent validation");
 
             List<Map<String, Object>> externalCategories = tekraApiService.getCategoriesRaw();
 
@@ -302,144 +302,218 @@ public class SyncService {
                     .orElse(null);
 
             if (mainCategory == null) {
-                log.warn("Category with slug 'videonablyudenie' not found in Tekra API response");
-                updateSyncLogSimple(syncLog, LOG_STATUS_SUCCESS, 0, 0, 0, 0, "videonablyudenie category not found", startTime);
+                log.warn("Category 'videonablyudenie' not found in Tekra API");
+                updateSyncLogSimple(syncLog, LOG_STATUS_SUCCESS, 0, 0, 0, 0, "Main category not found", startTime);
                 return;
             }
 
-            log.info("Found main category 'videonablyudenie' with id: {}", getString(mainCategory, "id"));
-
             Map<String, Category> existingCategories = categoryRepository.findAll()
                     .stream()
-                    .filter(cat -> cat.getTekraSlug() != null)
+                    .filter(cat -> cat.getSlug() != null)
                     .collect(Collectors.toMap(
-                            cat -> cat.getSlug() != null ? cat.getSlug() : cat.getTekraId(),
+                            Category::getSlug,
                             cat -> cat,
-                            (existing, duplicate) -> {
-                                log.warn("Duplicate category found: keeping ID {}, discarding ID {}",
-                                        existing.getId(), duplicate.getId());
-                                return existing;
-                            }
+                            (existing, duplicate) -> existing
                     ));
 
             long created = 0, updated = 0, skipped = 0;
 
-            // Step 1: Create/update main category
+            // СТЪПКА 1: Създай главната категория
+            log.info("=== STEP 1: Creating main category ===");
             Category mainCat = createOrUpdateTekraCategory(mainCategory, existingCategories, null);
             if (mainCat != null) {
-                String mainKey = mainCat.getSlug();
-                if (existingCategories.containsKey(mainKey)) {
+                if (existingCategories.containsKey(mainCat.getSlug())) {
                     updated++;
                 } else {
                     created++;
-                    existingCategories.put(mainKey, mainCat);
+                    existingCategories.put(mainCat.getSlug(), mainCat);
                 }
             }
+            log.info("Main category created: ID={}", mainCat != null ? mainCat.getId() : "NULL");
 
-            // ВАЖНО: Създаваме задължителните структурни категории които Tekra не връща
-            Category hdAnalogCategory = createMissingStructuralCategory(
-                    "HD аналогови системи", "hd-analogovi-sistemi", mainCat, existingCategories
-            );
-            if (hdAnalogCategory != null) {
-                created++;
-                log.info("Created missing structural category: HD аналогови системи");
-            }
-
-            Category accessoriesCategory = createMissingStructuralCategory(
-                    "Аксесоари", "aksesoari-root", mainCat, existingCategories
-            );
-            if (accessoriesCategory != null) {
-                created++;
-                log.info("Created missing structural category: Аксесоари");
-            }
-
-            // Step 2: Process sub_categories (level 2)
+            // СТЪПКА 2: Обработи level-2 категории
+            log.info("=== STEP 2: Processing level-2 categories ===");
             Object subCategoriesObj = mainCategory.get("sub_categories");
-            if (subCategoriesObj instanceof List) {
-                @SuppressWarnings("unchecked")
-                List<Map<String, Object>> subCategories = (List<Map<String, Object>>) subCategoriesObj;
+            if (!(subCategoriesObj instanceof List)) {
+                log.warn("No sub_categories found in main category");
+                updateSyncLogSimple(syncLog, LOG_STATUS_SUCCESS, 1, created, updated, 0, "No subcategories", startTime);
+                return;
+            }
 
-                log.info("Found {} level-2 subcategories", subCategories.size());
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> subCategories = (List<Map<String, Object>>) subCategoriesObj;
 
-                for (Map<String, Object> subCat : subCategories) {
-                    try {
-                        String subCatId = getString(subCat, "id");
-                        String subCatSlug = getString(subCat, "slug");
-                        String subCatName = getString(subCat, "name");
+            log.info("Found {} level-2 categories from Tekra", subCategories.size());
 
-                        if (subCatId == null || subCatSlug == null || subCatName == null) {
-                            log.warn("Skipping subcategory with missing fields");
-                            skipped++;
-                            continue;
-                        }
+            // Map за бърз достъп до level-2 по tekra_slug
+            Map<String, Category> level2Categories = new HashMap<>();
 
-                        // ВАЖНА ЛОГИКА: Определяме parent-а според името на категорията
-                        Category parentForThisCategory = determineCorrectParent(
-                                subCatName, mainCat, hdAnalogCategory, accessoriesCategory
-                        );
+            for (int i = 0; i < subCategories.size(); i++) {
+                Map<String, Object> subCat = subCategories.get(i);
 
-                        Category level2Cat = createOrUpdateTekraCategory(subCat, existingCategories, parentForThisCategory);
-                        if (level2Cat != null) {
-                            String level2Key = level2Cat.getSlug();
-                            if (existingCategories.containsKey(level2Key)) {
-                                updated++;
-                            } else {
-                                created++;
-                                existingCategories.put(level2Key, level2Cat);
-                            }
+                try {
+                    String subCatSlug = getString(subCat, "slug");
+                    String subCatName = getString(subCat, "name");
 
-                            // Step 3: Process subsubcat (level 3)
-                            Object subSubCatObj = subCat.get("subsubcat");
-                            if (subSubCatObj instanceof List) {
-                                @SuppressWarnings("unchecked")
-                                List<Map<String, Object>> subSubCategories = (List<Map<String, Object>>) subSubCatObj;
+                    log.info("Processing level-2 [{}/{}]: '{}' (slug: {})",
+                            i + 1, subCategories.size(), subCatName, subCatSlug);
 
-                                for (Map<String, Object> subSubCat : subSubCategories) {
-                                    try {
-                                        String subSubCatId = getString(subSubCat, "id");
-                                        String subSubCatSlug = getString(subSubCat, "slug");
-                                        String subSubCatName = getString(subSubCat, "name");
-
-                                        if (subSubCatId == null || subSubCatSlug == null || subSubCatName == null) {
-                                            log.warn("Skipping level-3 category with missing fields");
-                                            skipped++;
-                                            continue;
-                                        }
-
-                                        Category level3Cat = createOrUpdateTekraCategory(subSubCat, existingCategories, level2Cat);
-                                        if (level3Cat != null) {
-                                            String level3Key = level3Cat.getSlug();
-                                            if (existingCategories.containsKey(level3Key)) {
-                                                updated++;
-                                            } else {
-                                                created++;
-                                                existingCategories.put(level3Key, level3Cat);
-                                            }
-                                        }
-
-                                    } catch (Exception e) {
-                                        log.error("Error processing level-3 category: {}", e.getMessage());
-                                        skipped++;
-                                    }
-                                }
-                            }
-                        }
-
-                    } catch (Exception e) {
-                        log.error("Error processing subcategory: {}", e.getMessage());
+                    if (subCatSlug == null || subCatName == null) {
+                        log.warn("Skipping level-2 category with missing fields");
                         skipped++;
+                        continue;
                     }
+
+                    Category level2Cat = createOrUpdateTekraCategory(subCat, existingCategories, mainCat);
+                    if (level2Cat != null) {
+                        String level2Key = level2Cat.getSlug();
+
+                        if (existingCategories.containsKey(level2Key)) {
+                            updated++;
+                        } else {
+                            created++;
+                            existingCategories.put(level2Key, level2Cat);
+                        }
+
+                        // ✅ Запазваме в map за level-3 обработка
+                        level2Categories.put(subCatSlug, level2Cat);
+
+                        log.info("✓ Created/Updated level-2: '{}' (ID: {}, path: {})",
+                                level2Cat.getNameBg(), level2Cat.getId(), level2Cat.getCategoryPath());
+                    } else {
+                        log.error("Failed to create/update level-2 category: {}", subCatName);
+                    }
+
+                } catch (Exception e) {
+                    log.error("ERROR processing level-2 category [{}]: {}", i + 1, e.getMessage(), e);
+                    skipped++;
                 }
             }
+
+            log.info("=== STEP 2 COMPLETE: {} level-2 categories processed ===", level2Categories.size());
+            log.info("level2Categories map contains: {}", level2Categories.keySet());
+
+            // СТЪПКА 3: Обработи level-3 категории
+            log.info("=== STEP 3: Processing level-3 categories ===");
+
+            int totalLevel3 = 0;
+            for (int i = 0; i < subCategories.size(); i++) {
+                Map<String, Object> subCat = subCategories.get(i);
+
+                try {
+                    String subCatSlug = getString(subCat, "slug");
+                    String subCatName = getString(subCat, "name");
+
+                    log.info("Looking for level-3 under level-2 [{}/{}]: '{}' (slug: {})",
+                            i + 1, subCategories.size(), subCatName, subCatSlug);
+
+                    Category parentCategory = level2Categories.get(subCatSlug);
+
+                    if (parentCategory == null) {
+                        log.warn("✗ Parent category NOT FOUND in map for slug: '{}'. Available keys: {}",
+                                subCatSlug, level2Categories.keySet());
+                        continue;
+                    }
+
+                    log.info("✓ Found parent category: '{}' (ID: {})",
+                            parentCategory.getNameBg(), parentCategory.getId());
+
+                    Object subSubCatObj = subCat.get("subsubcat");
+                    if (!(subSubCatObj instanceof List)) {
+                        log.info("No level-3 categories under '{}'", subCatName);
+                        continue;
+                    }
+
+                    @SuppressWarnings("unchecked")
+                    List<Map<String, Object>> subSubCategories = (List<Map<String, Object>>) subSubCatObj;
+
+                    log.info("Processing {} level-3 categories under '{}'",
+                            subSubCategories.size(), parentCategory.getNameBg());
+
+                    for (int j = 0; j < subSubCategories.size(); j++) {
+                        Map<String, Object> subSubCat = subSubCategories.get(j);
+
+                        try {
+                            String subSubCatSlug = getString(subSubCat, "slug");
+                            String subSubCatName = getString(subSubCat, "name");
+
+                            log.info("  Processing level-3 [{}/{}]: '{}' (slug: {})",
+                                    j + 1, subSubCategories.size(), subSubCatName, subSubCatSlug);
+
+                            if (subSubCatSlug == null || subSubCatName == null) {
+                                log.warn("  Skipping level-3 with missing fields");
+                                skipped++;
+                                continue;
+                            }
+
+                            if (parentCategory.getId() == null) {
+                                log.error("  Parent category '{}' has NULL ID! Skipping...",
+                                        parentCategory.getNameBg());
+                                skipped++;
+                                continue;
+                            }
+
+                            log.info("  Creating level-3: '{}' under parent '{}' (ID: {})",
+                                    subSubCatName, parentCategory.getNameBg(), parentCategory.getId());
+
+                            Category level3Cat = createOrUpdateTekraCategory(
+                                    subSubCat, existingCategories, parentCategory);
+
+                            if (level3Cat != null) {
+                                String level3Key = level3Cat.getSlug();
+
+                                if (existingCategories.containsKey(level3Key)) {
+                                    updated++;
+                                } else {
+                                    created++;
+                                    existingCategories.put(level3Key, level3Cat);
+                                }
+
+                                totalLevel3++;
+
+                                log.info("  ✓ Created/Updated level-3: '{}' (ID: {}, parent_id: {}, path: {})",
+                                        level3Cat.getNameBg(),
+                                        level3Cat.getId(),
+                                        level3Cat.getParent() != null ? level3Cat.getParent().getId() : "NULL",
+                                        level3Cat.getCategoryPath());
+                            } else {
+                                log.error("  Failed to create level-3: {}", subSubCatName);
+                            }
+
+                        } catch (Exception e) {
+                            log.error("  ERROR processing level-3 category '{}': {}",
+                                    getString(subSubCat, "name"), e.getMessage(), e);
+                            skipped++;
+                        }
+                    }
+
+                } catch (Exception e) {
+                    log.error("ERROR processing subcategories for level-2 [{}]: {}", i + 1, e.getMessage(), e);
+                    skipped++;
+                }
+            }
+
+            log.info("=== STEP 3 COMPLETE: {} level-3 categories processed ===", totalLevel3);
+
+            // Flush преди да завършим
+            log.info("=== Flushing entity manager ===");
+            entityManager.flush();
+            entityManager.clear();
+            log.info("✓ Flush complete");
 
             long totalCategories = created + updated;
             updateSyncLogSimple(syncLog, LOG_STATUS_SUCCESS, totalCategories, created, updated, skipped,
-                    skipped > 0 ? String.format("Skipped %d categories with errors", skipped) : null, startTime);
+                    skipped > 0 ? String.format("Skipped %d categories", skipped) : null, startTime);
 
-            log.info("Tekra categories synchronization completed - Total: {}, Created: {}, Updated: {}, Skipped: {}",
+            log.info("=== SYNC COMPLETE ===");
+            log.info("Tekra categories sync completed - Total: {}, Created: {}, Updated: {}, Skipped: {}",
                     totalCategories, created, updated, skipped);
 
+            // Валидация след sync
+            validateCategoryHierarchy();
+
         } catch (Exception e) {
+            log.error("=== SYNC FAILED ===", e);
             updateSyncLogSimple(syncLog, LOG_STATUS_FAILED, 0, 0, 0, 0, e.getMessage(), startTime);
             log.error("Error during Tekra categories synchronization", e);
             throw e;
@@ -710,9 +784,12 @@ public class SyncService {
         long startTime = System.currentTimeMillis();
 
         try {
-            log.info("=== STARTING Tekra products synchronization ===");
+            log.info("=== STARTING Tekra products synchronization with categoryPath matching ===");
 
             fixDuplicateProducts();
+
+            // ✅ НОВО: Анализираме категориите преди да започнем
+            analyzeCategoryPaths();
 
             // STEP 1: Fetch products from all categories
             log.info("STEP 1: Fetching products from all Tekra categories...");
@@ -728,8 +805,8 @@ public class SyncService {
             for (Category category : allCategories) {
                 try {
                     String categorySlug = category.getTekraSlug();
-                    log.info("Fetching products for category: {} (slug: {})",
-                            category.getNameBg(), categorySlug);
+                    log.info("Fetching products for category: {} (path: {})",
+                            category.getNameBg(), category.getCategoryPath());
 
                     List<Map<String, Object>> categoryProducts = tekraApiService.getProductsRaw(categorySlug);
                     log.info("Found {} products in category '{}'", categoryProducts.size(), category.getNameBg());
@@ -739,18 +816,6 @@ public class SyncService {
                         if (sku != null && !processedSkus.contains(sku)) {
                             allProducts.add(product);
                             processedSkus.add(sku);
-
-                            // ВАЖНО: Запазваме пълната информация за source категорията
-                            product.put("source_category_slug", categorySlug);
-                            product.put("source_category_name", category.getNameBg());
-                            product.put("source_category_id", category.getId());
-
-                            // Запазваме и parent информация за точно мачване
-                            if (category.getParent() != null) {
-                                product.put("source_category_parent_id", category.getParent().getId());
-                                product.put("source_category_parent_slug", category.getParent().getTekraSlug());
-                                product.put("source_category_parent_name", category.getParent().getNameBg());
-                            }
                         }
                     }
 
@@ -769,19 +834,23 @@ public class SyncService {
                 return;
             }
 
-            // STEP 2: Load categories for mapping
-            log.info("STEP 2: Loading categories for mapping...");
+            // STEP 2: Prepare category maps (including categoryPath)
+            log.info("STEP 2: Loading categories with paths for matching...");
+            Map<String, Category> categoriesByPath = new HashMap<>();
             Map<String, Category> categoriesByName = new HashMap<>();
             Map<String, Category> categoriesBySlug = new HashMap<>();
             Map<String, Category> categoriesByTekraSlug = new HashMap<>();
 
             for (Category cat : allCategories) {
+                // ✅ НОВО: Индексираме по categoryPath
+                if (cat.getCategoryPath() != null) {
+                    categoriesByPath.put(cat.getCategoryPath().toLowerCase(), cat);
+                    log.debug("Indexed category by path: '{}' -> '{}'",
+                            cat.getCategoryPath(), cat.getNameBg());
+                }
+
                 if (cat.getNameBg() != null) {
                     categoriesByName.put(cat.getNameBg().toLowerCase(), cat);
-                    String normalized = normalizeCategoryName(cat.getNameBg());
-                    if (!categoriesByName.containsKey(normalized)) {
-                        categoriesByName.put(normalized, cat);
-                    }
                 }
 
                 if (cat.getSlug() != null) {
@@ -789,33 +858,26 @@ public class SyncService {
                 }
 
                 if (cat.getTekraSlug() != null) {
-                    String tekraSlugKey = cat.getTekraSlug().toLowerCase();
-
-                    if (cat.getParent() != null && cat.getParent().getTekraSlug() != null) {
-                        String compositeKey = cat.getParent().getTekraSlug().toLowerCase() + ":" + tekraSlugKey;
-                        categoriesByTekraSlug.put(compositeKey, cat);
-                        log.debug("Mapped category with composite key: '{}' -> '{}'", compositeKey, cat.getNameBg());
-                    }
-
-                    if (!categoriesByTekraSlug.containsKey(tekraSlugKey)) {
-                        categoriesByTekraSlug.put(tekraSlugKey, cat);
-                    } else {
-                        log.warn("Duplicate tekra_slug found: '{}' - categories: '{}' and '{}'",
-                                tekraSlugKey, categoriesByTekraSlug.get(tekraSlugKey).getNameBg(), cat.getNameBg());
-                    }
+                    categoriesByTekraSlug.put(cat.getTekraSlug().toLowerCase(), cat);
                 }
             }
 
-            log.info("Category maps created: byName={}, bySlug={}, byTekraSlug={}",
-                    categoriesByName.size(), categoriesBySlug.size(), categoriesByTekraSlug.size());
+            log.info("Category maps created: byPath={}, byName={}, bySlug={}, byTekraSlug={}",
+                    categoriesByPath.size(), categoriesByName.size(),
+                    categoriesBySlug.size(), categoriesByTekraSlug.size());
 
-            analyzeProductCategories(allProducts, categoriesByName);
-
-            // STEP 3: Process products
-            log.info("STEP 3: Processing {} products...", allProducts.size());
+            // STEP 3: Process products with improved matching
+            log.info("STEP 3: Processing {} products with categoryPath matching...", allProducts.size());
 
             long totalProcessed = 0, totalCreated = 0, totalUpdated = 0, totalErrors = 0;
             long skippedNoCategory = 0;
+
+            // ✅ НОВО: Статистика за мачване
+            Map<String, Integer> matchTypeStats = new HashMap<>();
+            matchTypeStats.put("perfect_path", 0);
+            matchTypeStats.put("partial_path", 0);
+            matchTypeStats.put("name_match", 0);
+            matchTypeStats.put("no_match", 0);
 
             for (int i = 0; i < allProducts.size(); i++) {
                 Map<String, Object> rawProduct = allProducts.get(i);
@@ -830,41 +892,24 @@ public class SyncService {
                         continue;
                     }
 
-                    Category productCategory = findMostSpecificCategory(rawProduct, categoriesByName,
-                            categoriesBySlug, categoriesByTekraSlug);
+                    // ✅ НОВО: Използваме подобреното мачване с categoryPath
+                    Category productCategory = findMostSpecificCategory(rawProduct,
+                            categoriesByName, categoriesBySlug, categoriesByTekraSlug);
 
-                    // Валидираме намерената категория
                     if (productCategory != null && !isValidCategory(productCategory)) {
                         log.warn("Invalid category found for product {}, rejecting", sku);
                         productCategory = null;
                     }
 
-                    // АКО НЕ Е НАМЕРЕНА КАТЕГОРИЯ - SKIP продукта
-                    // Това гарантира че продуктите винаги отиват на правилното място!
                     if (productCategory == null) {
-                        log.warn("✗✗✗ Skipping product '{}' ({}): NO VALID CATEGORY MAPPING", name, sku);
+                        log.warn("✗✗✗ Skipping product '{}' ({}): NO CATEGORY MAPPING", name, sku);
                         skippedNoCategory++;
+                        matchTypeStats.put("no_match", matchTypeStats.get("no_match") + 1);
                         continue;
                     }
 
-                    // Допълнителна валидация - проверяваме дали категорията има правилен parent
-                    String sourceCategoryParentName = (String) rawProduct.get("source_category_parent_name");
-                    if (sourceCategoryParentName != null && productCategory.getParent() != null) {
-                        String actualParentName = productCategory.getParent().getNameBg();
-                        if (!actualParentName.toLowerCase().contains(sourceCategoryParentName.toLowerCase()) &&
-                                !sourceCategoryParentName.toLowerCase().contains(actualParentName.toLowerCase())) {
-                            log.warn("✗ Category parent mismatch for product '{}': expected parent '{}', got '{}'",
-                                    sku, sourceCategoryParentName, actualParentName);
-                            log.warn("✗ Skipping product to avoid wrong category assignment");
-                            skippedNoCategory++;
-                            continue;
-                        }
-                    }
-
-                    log.info("✓✓✓ Product '{}' assigned to category: '{}' (parent: '{}')",
-                            sku,
-                            productCategory.getNameBg(),
-                            productCategory.getParent() != null ? productCategory.getParent().getNameBg() : "ROOT");
+                    log.info("✓✓✓ Product '{}' → category: '{}' (path: '{}')",
+                            sku, productCategory.getNameBg(), productCategory.getCategoryPath());
 
                     Product product = findOrCreateProduct(sku, rawProduct, productCategory);
 
@@ -883,7 +928,7 @@ public class SyncService {
                     totalProcessed++;
 
                     if (totalProcessed % 20 == 0) {
-                        log.info("Progress: {}/{} (created: {}, updated: {}, errors: {}, skipped no category: {})",
+                        log.info("Progress: {}/{} (created: {}, updated: {}, errors: {}, skipped: {})",
                                 totalProcessed, allProducts.size(), totalCreated, totalUpdated,
                                 totalErrors, skippedNoCategory);
                     }
@@ -895,9 +940,17 @@ public class SyncService {
 
                 } catch (Exception e) {
                     totalErrors++;
-                    log.error("Error processing product {}: {}", getStringValue(rawProduct, "sku"), e.getMessage(), e);
+                    log.error("Error processing product {}: {}",
+                            getStringValue(rawProduct, "sku"), e.getMessage(), e);
                 }
             }
+
+            // ✅ НОВО: Показваме статистика за мачването
+            log.info("=== CATEGORY MATCHING STATISTICS ===");
+            matchTypeStats.forEach((type, count) ->
+                    log.info("{}: {}", type, count)
+            );
+            log.info("====================================");
 
             String message = String.format(
                     "Total: %d, Created: %d, Updated: %d, Skipped (No Category): %d, Errors: %d",
@@ -907,7 +960,8 @@ public class SyncService {
             updateSyncLogSimple(syncLog, LOG_STATUS_SUCCESS, totalProcessed, totalCreated,
                     totalUpdated, totalErrors, message, startTime);
 
-            log.info("=== COMPLETE: Products sync finished in {}ms ===", System.currentTimeMillis() - startTime);
+            log.info("=== COMPLETE: Products sync finished in {}ms ===",
+                    System.currentTimeMillis() - startTime);
 
         } catch (Exception e) {
             updateSyncLogSimple(syncLog, LOG_STATUS_FAILED, 0, 0, 0, 0, e.getMessage(), startTime);
@@ -916,162 +970,11 @@ public class SyncService {
         }
     }
 
-    @Transactional
-    public void syncTekraComplete() {
-        log.info("=== Starting complete Tekra synchronization with subcategories ===");
-        long overallStart = System.currentTimeMillis();
-
-        try {
-            log.info("Step 1: Syncing Tekra categories and subcategories...");
-            syncTekraCategories();
-
-            long categoriesCount = categoryRepository.findAll().stream()
-                    .filter(cat -> cat.getTekraSlug() != null)
-                    .count();
-            log.info("✓ Synced {} Tekra categories (including subcategories)", categoriesCount);
-
-            log.info("Step 2: Syncing Tekra manufacturers from all categories...");
-            syncTekraManufacturers();
-
-            log.info("Step 3: Syncing Tekra parameters for all categories...");
-            syncTekraParameters();
-
-            if (tekraApiService != null) {
-                tekraApiService.clearCache();
-            }
-
-            log.info("Step 4: Syncing Tekra products for all categories with parameters...");
-            syncTekraProducts();
-
-            long totalDuration = System.currentTimeMillis() - overallStart;
-            log.info("=== Complete Tekra synchronization finished in {}ms ({} minutes) ===",
-                    totalDuration, totalDuration / 60000);
-
-        } catch (Exception e) {
-            long totalDuration = System.currentTimeMillis() - overallStart;
-            log.error("=== Complete Tekra synchronization failed after {}ms ===", totalDuration, e);
-            throw e;
-        }
-    }
-
     // ============ HELPER METHODS FOR STRUCTURAL CATEGORIES ============
 
     /**
-     * Създава липсваща структурна категория (не е от Tekra API)
+     * ✅ FIXED: Създава/обновява Tekra категория с правилен slug генериране
      */
-    private Category createMissingStructuralCategory(String name, String slug,
-                                                     Category parent,
-                                                     Map<String, Category> existingCategories) {
-        // Проверка дали вече съществува
-        String fullSlug = parent != null ? parent.getSlug() + "-" + slug : slug;
-
-        if (existingCategories.containsKey(fullSlug)) {
-            log.info("Structural category already exists: {}", name);
-            return existingCategories.get(fullSlug);
-        }
-
-        // Проверка в БД
-        Optional<Category> existing = categoryRepository.findAll().stream()
-                .filter(cat -> fullSlug.equals(cat.getSlug()))
-                .findFirst();
-
-        if (existing.isPresent()) {
-            existingCategories.put(fullSlug, existing.get());
-            return existing.get();
-        }
-
-        // Създаване на нова категория
-        Category category = new Category();
-        category.setNameBg(name);
-        category.setNameEn(name);
-        category.setSlug(fullSlug);
-        category.setTekraSlug(slug); // Запазваме slug-а за препратки
-        category.setParent(parent);
-        category.setShow(true);
-        category.setSortOrder(0);
-
-        category = categoryRepository.save(category);
-        existingCategories.put(fullSlug, category);
-
-        log.info("✓ Created missing structural category: {} (slug: {}, parent: {})",
-                name, fullSlug, parent != null ? parent.getNameBg() : "ROOT");
-
-        return category;
-    }
-
-    /**
-     * Определя правилния parent за категория според името ѝ
-     */
-    private Category determineCorrectParent(String categoryName,
-                                            Category mainCategory,
-                                            Category hdAnalogCategory,
-                                            Category accessoriesCategory) {
-        String nameLower = categoryName.toLowerCase();
-
-        // IP системи винаги е под главната категория
-        if (nameLower.contains("ip") && nameLower.contains("систем")) {
-            log.debug("Category '{}' → parent: Видеонаблюдение (ROOT)", categoryName);
-            return mainCategory;
-        }
-
-        // Аксесоари които трябва да са под "Аксесоари" root категория
-        if (matchesAccessoryCategory(nameLower)) {
-            log.debug("Category '{}' → parent: Аксесоари", categoryName);
-            return accessoriesCategory;
-        }
-
-        // Камери без "IP" в името → под "HD аналогови системи"
-        if (nameLower.contains("камер") && !nameLower.contains("ip")) {
-            log.debug("Category '{}' → parent: HD аналогови системи", categoryName);
-            return hdAnalogCategory;
-        }
-
-        // Записващи устройства без NVR → под "HD аналогови системи"
-        if (nameLower.contains("записващ") && !nameLower.contains("nvr") && !nameLower.contains("мрежов")) {
-            log.debug("Category '{}' → parent: HD аналогови системи", categoryName);
-            return hdAnalogCategory;
-        }
-
-        // Мрежови устройства → под "IP системи" (ще се създаде ако липсва)
-        if (nameLower.contains("мрежов") && nameLower.contains("устройств")) {
-            // Търсим "IP системи" в съществуващите
-            Optional<Category> ipSystems = categoryRepository.findAll().stream()
-                    .filter(cat -> cat.getNameBg().contains("IP") && cat.getNameBg().contains("систем"))
-                    .findFirst();
-            if (ipSystems.isPresent()) {
-                log.debug("Category '{}' → parent: IP системи", categoryName);
-                return ipSystems.get();
-            }
-        }
-
-        // По подразбиране - под главната категория
-        log.debug("Category '{}' → parent: Видеонаблюдение (DEFAULT)", categoryName);
-        return mainCategory;
-    }
-
-    /**
-     * Проверява дали категория е аксесоар
-     */
-    private boolean matchesAccessoryCategory(String nameLower) {
-        String[] accessoryKeywords = {
-                "адаптер", "захранващ", "блок", "конектор", "видеобалун",
-                "стойк", "основ", "камер", "защит", "изолатор", "друг"
-        };
-
-        for (String keyword : accessoryKeywords) {
-            if (nameLower.contains(keyword)) {
-                // Изключение: "Стойки и основи за камери" е аксесоар
-                // Но "Камери" самостоятелно НЕ е аксесоар
-                if (keyword.equals("камер") && !nameLower.contains("стойк") && !nameLower.contains("основ")) {
-                    return false;
-                }
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     private Category createOrUpdateTekraCategory(Map<String, Object> rawData,
                                                  Map<String, Category> existingCategories,
                                                  Category parentCategory) {
@@ -1081,37 +984,60 @@ public class SyncService {
             String name = getString(rawData, "name");
 
             if (tekraId == null || tekraSlug == null || name == null) {
-                log.warn("Cannot create category with missing required fields");
+                log.warn("Cannot create category with missing fields: id={}, slug={}, name={}",
+                        tekraId, tekraSlug, name);
                 return null;
             }
 
-            String uniqueSlug = generateUniqueSlug(tekraSlug, name, parentCategory, existingCategories);
+            // ✅ КРИТИЧНО: Търсим съществуваща категория ПО tekra_id И parent
+            Optional<Category> existingCategoryOpt = findExistingCategoryByTekraData(
+                    tekraId, tekraSlug, parentCategory);
 
-            Category category = existingCategories.get(uniqueSlug);
+            Category category;
+            boolean isNew = false;
 
-            if (category == null) {
-                Optional<Category> foundCategory = findExistingCategoryByTekraData(
-                        tekraId, tekraSlug, parentCategory
-                );
+            if (existingCategoryOpt.isPresent()) {
+                category = existingCategoryOpt.get();
 
-                if (foundCategory.isPresent()) {
-                    category = foundCategory.get();
-                    log.debug("Found existing category: {} (slug: {})", name, uniqueSlug);
-                } else {
+                // ✅ ВАЖНА ВАЛИДАЦИЯ: Проверяваме дали parent-ът съвпада!
+                boolean parentMatches = false;
+                if (parentCategory == null && category.getParent() == null) {
+                    parentMatches = true;
+                } else if (parentCategory != null && category.getParent() != null &&
+                        parentCategory.getId().equals(category.getParent().getId())) {
+                    parentMatches = true;
+                }
+
+                if (!parentMatches) {
+                    // Parent-ите не съвпадат - създаваме НОВА категория!
+                    log.warn("Found category '{}' (ID:{}) with tekra_id={} but WRONG parent! Expected parent_id={}, found parent_id={}. Creating NEW category.",
+                            name, category.getId(), tekraId,
+                            parentCategory != null ? parentCategory.getId() : "NULL",
+                            category.getParent() != null ? category.getParent().getId() : "NULL");
+
                     category = new Category();
                     category.setTekraId(tekraId);
-                    log.info("Creating NEW category: {} (unique slug: {})", name, uniqueSlug);
+                    isNew = true;
+                } else {
+                    log.debug("Found existing category with matching parent: '{}' (ID: {}, tekra_id: {})",
+                            name, category.getId(), tekraId);
                 }
+            } else {
+                category = new Category();
+                category.setTekraId(tekraId);
+                isNew = true;
+                log.info("Creating NEW category: '{}' (tekra_id: {})", name, tekraId);
             }
 
+            // ✅ Задаваме полетата
             category.setTekraSlug(tekraSlug);
-            category.setSlug(uniqueSlug);
             category.setNameBg(name);
             category.setNameEn(name);
             category.setParent(parentCategory);
 
+            // Parse count и show flag
             String countStr = getString(rawData, "count");
-            if (countStr != null) {
+            if (countStr != null && !countStr.isEmpty()) {
                 try {
                     Integer count = Integer.parseInt(countStr);
                     category.setSortOrder(count);
@@ -1125,136 +1051,144 @@ public class SyncService {
                 category.setSortOrder(0);
             }
 
+            // ✅ КРИТИЧНО: Генерираме slug ПРЕДИ да запазим
+            String uniqueSlug = generateUniqueSlug(tekraSlug, name, parentCategory, existingCategories);
+            category.setSlug(uniqueSlug);
+
+            // ✅ Генерираме categoryPath
+            category.setCategoryPath(category.generateCategoryPath());
+
+            // ✅ ВАЖНО: Запазваме в БД за да получим ID
             category = categoryRepository.save(category);
 
+            // ✅ Flush за да гарантираме че е в БД
+            categoryRepository.flush();
+
             String parentInfo = parentCategory != null ?
-                    " (parent: " + parentCategory.getNameBg() + ")" : " (ROOT)";
-            log.info("Saved category: {} {} (unique slug: {}, tekra_slug: {}, id: {})",
-                    name, parentInfo, uniqueSlug, tekraSlug, category.getId());
+                    String.format("parent='%s' (ID:%d)", parentCategory.getNameBg(), parentCategory.getId()) :
+                    "ROOT";
+
+            if (isNew) {
+                log.info("✓ CREATED: '{}' | slug='{}' | path='{}' | {} | ID={}",
+                        name, uniqueSlug, category.getCategoryPath(), parentInfo, category.getId());
+            } else {
+                log.info("✓ UPDATED: '{}' | slug='{}' | path='{}' | {} | ID={}",
+                        name, uniqueSlug, category.getCategoryPath(), parentInfo, category.getId());
+            }
 
             return category;
 
         } catch (Exception e) {
-            log.error("Error creating/updating category from Tekra data: {}", e.getMessage());
-            return null;
+            log.error("Error creating/updating category from Tekra: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to create/update category: " + getString(rawData, "name"), e);
         }
     }
 
+    /**
+     * ✅ FIXED: Генерира уникален slug КОНСТАНТНО за същата категория
+     * <p>
+     * Правила:
+     * - Level-1 (root): samo tekraSlug (напр. "videonablyudenie")
+     * - Level-2: parent-slug + tekraSlug (напр. "videonablyudenie-ip-sistemi")
+     * - Level-3: parent-slug + tekraSlug (напр. "videonablyudenie-ip-sistemi-kameri")
+     * <p>
+     * Ако има конфликт, добавя tekra_id като дискриминатор
+     */
     private String generateUniqueSlug(String tekraSlug, String categoryName,
                                       Category parentCategory,
                                       Map<String, Category> existingCategories) {
+        if (tekraSlug == null || tekraSlug.isEmpty()) {
+            log.warn("Tekra slug is null/empty for category: {}", categoryName);
+            tekraSlug = createSlugFromName(categoryName);
+        }
+
         String baseSlug = tekraSlug;
 
-        if (parentCategory != null) {
-            String hierarchicalSlug = parentCategory.getSlug() + "-" + baseSlug;
+        // ✅ ПРАВИЛО 1: Root категории (без parent)
+        if (parentCategory == null) {
+            if (!slugExistsInMap(baseSlug, existingCategories) &&
+                    !slugExistsInDatabase(baseSlug, null)) {
+                log.debug("Root slug: '{}'", baseSlug);
+                return baseSlug;
+            }
 
-            if (!slugExistsInMap(hierarchicalSlug, existingCategories) &&
-                    !slugExistsInDatabase(hierarchicalSlug, parentCategory)) {
+            // Ако има конфликт, добави "-root"
+            String rootSlug = baseSlug + "-root";
+            log.debug("Root slug with suffix: '{}'", rootSlug);
+            return rootSlug;
+        }
+
+        // ✅ ПРАВИЛО 2: Категории с parent
+        String parentSlug = parentCategory.getSlug();
+        if (parentSlug == null || parentSlug.isEmpty()) {
+            log.warn("Parent category '{}' has no slug!", parentCategory.getNameBg());
+            parentSlug = parentCategory.getTekraSlug();
+            if (parentSlug == null) {
+                parentSlug = "cat-" + parentCategory.getId();
+            }
+        }
+
+        // Комбиниран slug: parent + current
+        String hierarchicalSlug = parentSlug + "-" + baseSlug;
+
+        log.debug("Generating slug for '{}': parent='{}', tekra='{}', combined='{}'",
+                categoryName, parentSlug, baseSlug, hierarchicalSlug);
+
+        // Проверка за конфликт
+        if (!slugExistsInMap(hierarchicalSlug, existingCategories) &&
+                !slugExistsInDatabase(hierarchicalSlug, parentCategory)) {
+            log.debug("✓ Hierarchical slug OK: '{}'", hierarchicalSlug);
+            return hierarchicalSlug;
+        }
+
+        // ✅ ПРАВИЛО 3: Ако има конфликт, провери дали конфликтът е със СЪЩАТА категория
+        Category existing = existingCategories.get(hierarchicalSlug);
+        if (existing != null) {
+            // Проверка дали parent-ът е същият
+            if (existing.getParent() != null && parentCategory != null &&
+                    existing.getParent().getId().equals(parentCategory.getId())) {
+                // Същата категория, използваме същия slug
+                log.debug("✓ Reusing existing slug: '{}'", hierarchicalSlug);
                 return hierarchicalSlug;
             }
-
-            String parentKeyword = extractKeyword(parentCategory.getNameBg());
-            if (parentKeyword != null && !parentKeyword.isEmpty()) {
-                hierarchicalSlug = baseSlug + "-" + parentKeyword;
-                if (!slugExistsInMap(hierarchicalSlug, existingCategories) &&
-                        !slugExistsInDatabase(hierarchicalSlug, parentCategory)) {
-                    return hierarchicalSlug;
-                }
-            }
         }
 
-        if (!slugExistsInMap(baseSlug, existingCategories) &&
-                !slugExistsInDatabase(baseSlug, parentCategory)) {
-            return baseSlug;
-        }
-
+        // ✅ ПРАВИЛО 4: Реален конфликт - добави discriminator
+        // Използваме името като discriminator вместо число
         String discriminator = extractDiscriminator(categoryName);
         if (discriminator != null && !discriminator.isEmpty()) {
-            String discriminatedSlug = baseSlug + "-" + discriminator;
+            String discriminatedSlug = hierarchicalSlug + "-" + discriminator;
             if (!slugExistsInMap(discriminatedSlug, existingCategories) &&
                     !slugExistsInDatabase(discriminatedSlug, parentCategory)) {
+                log.debug("✓ Discriminated slug: '{}'", discriminatedSlug);
                 return discriminatedSlug;
             }
         }
 
-        int counter = 1;
+        // ✅ ПРАВИЛО 5: Последен fallback - числов суфикс
+        int counter = 2; // Започваме от 2 (1 е оригиналния)
         String numberedSlug;
         do {
-            numberedSlug = baseSlug + "-" + counter;
+            numberedSlug = hierarchicalSlug + "-" + counter;
             counter++;
-        } while (slugExistsInMap(numberedSlug, existingCategories) ||
-                slugExistsInDatabase(numberedSlug, parentCategory));
+        } while ((slugExistsInMap(numberedSlug, existingCategories) ||
+                slugExistsInDatabase(numberedSlug, parentCategory)) && counter < 100);
 
-        log.warn("Had to use numbered slug for category '{}': {}", categoryName, numberedSlug);
+        log.warn("Had to use numbered slug for '{}': '{}'", categoryName, numberedSlug);
         return numberedSlug;
     }
 
-    private String extractDiscriminator(String categoryName) {
-        if (categoryName == null || categoryName.isEmpty()) {
-            return null;
-        }
-
-        String lowerName = categoryName.toLowerCase();
-
-        Map<String, String> discriminators = Map.ofEntries(
-                Map.entry("ip", "ip"),
-                Map.entry("аналогов", "analog"),
-                Map.entry("мрежов", "network"),
-                Map.entry("безжичн", "wireless"),
-                Map.entry("wifi", "wifi"),
-                Map.entry("poe", "poe"),
-                Map.entry("куполн", "dome"),
-                Map.entry("булет", "bullet"),
-                Map.entry("цилиндричн", "bullet"),
-                Map.entry("вътрешн", "indoor"),
-                Map.entry("външн", "outdoor"),
-                Map.entry("nvr", "nvr"),
-                Map.entry("dvr", "dvr"),
-                Map.entry("hdcvi", "hdcvi"),
-                Map.entry("ahd", "ahd"),
-                Map.entry("tvi", "tvi")
-        );
-
-        for (Map.Entry<String, String> entry : discriminators.entrySet()) {
-            if (lowerName.contains(entry.getKey())) {
-                return entry.getValue();
-            }
-        }
-
-        String[] words = lowerName.split("\\s+");
-        if (words.length > 0 && words[0].length() > 2) {
-            return transliterateCyrillic(words[0])
-                    .toLowerCase()
-                    .replaceAll("[^a-z0-9]", "");
-        }
-
-        return null;
-    }
-
-    private String extractKeyword(String name) {
-        if (name == null || name.isEmpty()) {
-            return null;
-        }
-
-        String[] words = name.toLowerCase().split("\\s+");
-        for (String word : words) {
-            if (word.length() > 2) {
-                String transliterated = transliterateCyrillic(word);
-                return transliterated
-                        .toLowerCase()
-                        .replaceAll("[^a-z0-9]", "")
-                        .substring(0, Math.min(4, transliterated.length()));
-            }
-        }
-
-        return null;
-    }
-
+    /**
+     * ✅ UPDATED: Проверява дали slug съществува в map
+     */
     private boolean slugExistsInMap(String slug, Map<String, Category> existingCategories) {
         return existingCategories.containsKey(slug);
     }
 
-    private boolean slugExistsInDatabase(String slug, Category excludeParent) {
+    /**
+     * ✅ UPDATED: Проверява дали slug съществува в БД
+     */
+    private boolean slugExistsInDatabase(String slug, Category parentCategory) {
         List<Category> existing = categoryRepository.findAll().stream()
                 .filter(cat -> slug.equals(cat.getSlug()))
                 .toList();
@@ -1263,48 +1197,151 @@ public class SyncService {
             return false;
         }
 
-        if (excludeParent != null) {
+        // Ако имаме parent constraint, проверяваме само за различен parent
+        if (parentCategory != null) {
             for (Category cat : existing) {
                 Category catParent = cat.getParent();
-                if ((catParent == null && excludeParent != null) ||
-                        (catParent != null && !catParent.getId().equals(excludeParent.getId()))) {
-                    return true;
+
+                // Конфликт само ако parent-ите са различни
+                if (catParent == null && parentCategory != null) {
+                    return true; // Категория без parent vs с parent
+                }
+                if (catParent != null && parentCategory == null) {
+                    return true; // Категория с parent vs без parent
+                }
+                if (catParent != null && !catParent.getId().equals(parentCategory.getId())) {
+                    return true; // Различни родители
                 }
             }
-            return false;
+            return false; // Същия parent, не е конфликт
         }
 
-        return true;
+        return true; // Има категория с този slug
     }
 
+    /**
+     * ✅ SIMPLIFIED: Извлича кратък discriminator от името
+     */
+    private String extractDiscriminator(String categoryName) {
+        if (categoryName == null || categoryName.isEmpty()) {
+            return null;
+        }
+
+        String lowerName = categoryName.toLowerCase();
+
+        // Кратки ключови думи които помагат за разпознаване
+        Map<String, String> keywords = Map.ofEntries(
+                Map.entry("ip", "ip"),
+                Map.entry("аналогов", "analog"),
+                Map.entry("hd", "hd"),
+                Map.entry("wifi", "wifi"),
+                Map.entry("безжичн", "wireless"),
+                Map.entry("куполн", "dome"),
+                Map.entry("булет", "bullet"),
+                Map.entry("вътрешн", "indoor"),
+                Map.entry("външн", "outdoor"),
+                Map.entry("nvr", "nvr"),
+                Map.entry("dvr", "dvr")
+        );
+
+        // Търси ключова дума в името
+        for (Map.Entry<String, String> entry : keywords.entrySet()) {
+            if (lowerName.contains(entry.getKey())) {
+                return entry.getValue();
+            }
+        }
+
+        // Ако няма ключова дума, използваме първата значима дума
+        String[] words = lowerName.split("\\s+");
+        if (words.length > 0 && words[0].length() > 2) {
+            String transliterated = transliterateCyrillic(words[0]);
+            return transliterated
+                    .toLowerCase()
+                    .replaceAll("[^a-z0-9]", "")
+                    .substring(0, Math.min(4, transliterated.length()));
+        }
+
+        return null;
+    }
+
+    /**
+     * ✅ HELPER: Намира съществуваща категория по Tekra данни
+     */
     private Optional<Category> findExistingCategoryByTekraData(String tekraId,
                                                                String tekraSlug,
                                                                Category parentCategory) {
-        List<Category> candidates = categoryRepository.findAll().stream()
-                .filter(cat -> tekraId.equals(cat.getTekraId()) ||
-                        tekraSlug.equals(cat.getTekraSlug()))
-                .toList();
+        // Първо опит по tekra_id (най-точно)
+        if (tekraId != null) {
+            List<Category> byTekraId = categoryRepository.findAll().stream()
+                    .filter(cat -> tekraId.equals(cat.getTekraId()))
+                    .toList();
 
-        if (candidates.isEmpty()) {
-            return Optional.empty();
+            if (!byTekraId.isEmpty()) {
+                // ✅ КРИТИЧНО: Филтрираме по parent!
+                for (Category cat : byTekraId) {
+                    boolean parentMatches = false;
+
+                    if (parentCategory == null && cat.getParent() == null) {
+                        // И двете са root
+                        parentMatches = true;
+                    } else if (parentCategory != null && cat.getParent() != null &&
+                            parentCategory.getId().equals(cat.getParent().getId())) {
+                        // Същият parent
+                        parentMatches = true;
+                    }
+
+                    if (parentMatches) {
+                        log.debug("Found by tekra_id with matching parent: '{}' (ID:{}, parent_id:{})",
+                                cat.getNameBg(), cat.getId(),
+                                cat.getParent() != null ? cat.getParent().getId() : "NULL");
+                        return Optional.of(cat);
+                    } else {
+                        log.debug("Found by tekra_id but WRONG parent: '{}' (ID:{}, expected parent_id:{}, found parent_id:{})",
+                                cat.getNameBg(), cat.getId(),
+                                parentCategory != null ? parentCategory.getId() : "NULL",
+                                cat.getParent() != null ? cat.getParent().getId() : "NULL");
+                    }
+                }
+
+                // Има категория с този tekra_id но с РАЗЛИЧЕН parent
+                log.debug("Category with tekra_id={} exists but with different parent", tekraId);
+                return Optional.empty();
+            }
         }
 
-        if (parentCategory != null) {
-            for (Category candidate : candidates) {
-                if (candidate.getParent() != null &&
-                        candidate.getParent().getId().equals(parentCategory.getId())) {
-                    return Optional.of(candidate);
+        // Втори опит по tekra_slug (по-неточно, може да има дубликати)
+        if (tekraSlug != null) {
+            List<Category> byTekraSlug = categoryRepository.findAll().stream()
+                    .filter(cat -> tekraSlug.equals(cat.getTekraSlug()))
+                    .toList();
+
+            if (!byTekraSlug.isEmpty()) {
+                // ✅ Филтрираме по parent
+                for (Category cat : byTekraSlug) {
+                    boolean parentMatches = false;
+
+                    if (parentCategory == null && cat.getParent() == null) {
+                        parentMatches = true;
+                    } else if (parentCategory != null && cat.getParent() != null &&
+                            parentCategory.getId().equals(cat.getParent().getId())) {
+                        parentMatches = true;
+                    }
+
+                    if (parentMatches) {
+                        log.debug("Found by tekra_slug with matching parent: '{}' (ID:{})",
+                                cat.getNameBg(), cat.getId());
+                        return Optional.of(cat);
+                    }
                 }
-            }
-        } else {
-            for (Category candidate : candidates) {
-                if (candidate.getParent() == null) {
-                    return Optional.of(candidate);
-                }
+
+                log.debug("Category with tekra_slug={} exists but with different parent", tekraSlug);
+                return Optional.empty();
             }
         }
 
-        return Optional.of(candidates.get(0));
+        log.debug("No existing category found for tekra_id={}, tekra_slug={}, parent_id={}",
+                tekraId, tekraSlug, parentCategory != null ? parentCategory.getId() : "NULL");
+        return Optional.empty();
     }
 
     // ============ PRODUCT CATEGORY MAPPING ============
@@ -1316,97 +1353,129 @@ public class SyncService {
         String category3 = getStringValue(product, "category_3");
         String category2 = getStringValue(product, "category_2");
         String category1 = getStringValue(product, "category_1");
-        String sourceCategorySlug = (String) product.get("source_category_slug");
-        Long sourceCategoryId = (Long) product.get("source_category_id");
-        String sourceCategoryParentSlug = (String) product.get("source_category_parent_slug");
 
-        log.debug("Finding category for product: L1='{}', L2='{}', L3='{}', source='{}', sourceId={}, parentSlug='{}'",
-                category1, category2, category3, sourceCategorySlug, sourceCategoryId, sourceCategoryParentSlug);
+        log.debug("Matching product to category: L1='{}', L2='{}', L3='{}'",
+                category1, category2, category3);
 
-        // ПРИОРИТЕТ 1: Използваме директно source_category_id ако имаме
-        // Това е НАЙ-ТОЧНОТО мачване - продуктът е извлечен от тази точна категория!
-        if (sourceCategoryId != null) {
-            try {
-                Optional<Category> directCategory = categoryRepository.findById(sourceCategoryId);
-                if (directCategory.isPresent() && isValidCategory(directCategory.get())) {
-                    log.debug("✓✓✓ PERFECT MATCH using source_category_id: {} -> '{}'",
-                            sourceCategoryId, directCategory.get().getNameBg());
-                    return directCategory.get();
-                }
-            } catch (Exception e) {
-                log.warn("Error finding category by source_category_id: {}", e.getMessage());
+        // ✅ НОВО: Създаваме пълен път от XML категориите
+        String expectedPath = buildCategoryPath(category1, category2, category3);
+
+        if (expectedPath != null) {
+            log.debug("Expected category path: '{}'", expectedPath);
+
+            // Търсим категория с точно този път
+            Optional<Category> exactMatch = categoryRepository.findAll().stream()
+                    .filter(cat -> expectedPath.equalsIgnoreCase(cat.getCategoryPath()))
+                    .findFirst();
+
+            if (exactMatch.isPresent() && isValidCategory(exactMatch.get())) {
+                log.info("✓✓✓ PERFECT PATH MATCH: '{}' -> '{}'",
+                        expectedPath, exactMatch.get().getNameBg());
+                return exactMatch.get();
             }
         }
 
-        // ПРИОРИТЕТ 2: Композитен ключ (parent:child) за точно мачване при дубликати
-        if (sourceCategoryParentSlug != null && sourceCategorySlug != null) {
-            String compositeKey = sourceCategoryParentSlug.toLowerCase() + ":" + sourceCategorySlug.toLowerCase();
-            Category cat = categoriesByTekraSlug.get(compositeKey);
-
-            if (cat != null && isValidCategory(cat)) {
-                log.debug("✓✓ COMPOSITE KEY match: '{}' -> '{}'", compositeKey, cat.getNameBg());
-                return cat;
+        // Fallback: Опит по части на пътя (отзад напред за най-специфична категория)
+        if (category3 != null && category2 != null) {
+            String partialPath = buildCategoryPath(null, category2, category3);
+            Optional<Category> match = findCategoryByPartialPath(partialPath);
+            if (match.isPresent() && isValidCategory(match.get())) {
+                log.info("✓✓ PARTIAL PATH MATCH (L2+L3): '{}' -> '{}'",
+                        partialPath, match.get().getNameBg());
+                return match.get();
             }
         }
 
-        // ПРИОРИТЕТ 3: Опит да намерим по XML категории (само за допълнителна валидация)
-        if (category3 != null && !category3.trim().isEmpty()) {
-            Category cat = findCategoryByNameEnhanced(category3, categoriesByName, categoriesBySlug);
-            if (cat != null && isValidCategory(cat)) {
-                // Валидираме дали parent-ът съвпада
-                if (category2 != null && cat.getParent() != null) {
-                    if (cat.getParent().getNameBg().toLowerCase().contains(category2.toLowerCase()) ||
-                            category2.toLowerCase().contains(cat.getParent().getNameBg().toLowerCase())) {
-                        log.debug("✓ Mapped to L3 with parent validation: '{}' -> '{}'", category3, cat.getNameBg());
-                        return cat;
-                    }
-                } else {
-                    log.debug("✓ Mapped to L3: '{}' -> '{}'", category3, cat.getNameBg());
-                    return cat;
-                }
+        if (category3 != null) {
+            Optional<Category> match = findCategoryByName(category3, category2);
+            if (match.isPresent() && isValidCategory(match.get())) {
+                log.info("✓ NAME MATCH (L3): '{}' -> '{}'",
+                        category3, match.get().getNameBg());
+                return match.get();
             }
         }
 
-        if (category2 != null && !category2.trim().isEmpty()) {
-            Category cat = findCategoryByNameEnhanced(category2, categoriesByName, categoriesBySlug);
-            if (cat != null && isValidCategory(cat)) {
-                // Валидираме дали parent-ът съвпада
-                if (category1 != null && cat.getParent() != null) {
-                    if (cat.getParent().getNameBg().toLowerCase().contains(category1.toLowerCase()) ||
-                            category1.toLowerCase().contains(cat.getParent().getNameBg().toLowerCase())) {
-                        log.debug("✓ Mapped to L2 with parent validation: '{}' -> '{}'", category2, cat.getNameBg());
-                        return cat;
-                    }
-                } else {
-                    log.debug("✓ Mapped to L2: '{}' -> '{}'", category2, cat.getNameBg());
-                    return cat;
-                }
+        if (category2 != null) {
+            Optional<Category> match = findCategoryByName(category2, category1);
+            if (match.isPresent() && isValidCategory(match.get())) {
+                log.info("✓ NAME MATCH (L2): '{}' -> '{}'",
+                        category2, match.get().getNameBg());
+                return match.get();
             }
         }
 
-        if (category1 != null && !category1.trim().isEmpty()) {
-            Category cat = findCategoryByNameEnhanced(category1, categoriesByName, categoriesBySlug);
-            if (cat != null && isValidCategory(cat)) {
-                log.debug("✓ Mapped to L1: '{}' -> '{}'", category1, cat.getNameBg());
-                return cat;
-            }
-        }
-
-        // ПРИОРИТЕТ 4: Fallback - използваме source category само по tekra_slug (може да не е точно)
-        if (sourceCategorySlug != null) {
-            Category cat = categoriesByTekraSlug.get(sourceCategorySlug.toLowerCase());
-
-            if (cat != null && isValidCategory(cat)) {
-                log.debug("✓ Using source category (fallback): slug='{}' -> '{}'", sourceCategorySlug, cat.getNameBg());
-                return cat;
-            } else {
-                log.warn("✗ Source category not found by tekra_slug: '{}'", sourceCategorySlug);
-            }
-        }
-
-        log.warn("✗✗✗ NO MATCH for: L1='{}', L2='{}', L3='{}', source='{}', sourceId={}",
-                category1, category2, category3, sourceCategorySlug, sourceCategoryId);
+        log.warn("✗✗✗ NO MATCH for path: '{}'", expectedPath);
         return null;
+    }
+
+    private String buildCategoryPath(String category1, String category2, String category3) {
+        List<String> parts = new ArrayList<>();
+
+        if (category1 != null) {
+            parts.add(normalizeCategoryForPath(category1));
+        }
+        if (category2 != null) {
+            parts.add(normalizeCategoryForPath(category2));
+        }
+        if (category3 != null) {
+            parts.add(normalizeCategoryForPath(category3));
+        }
+
+        return parts.isEmpty() ? null : String.join("/", parts);
+    }
+
+    /**
+     * НОВО: Нормализира име на категория за използване в път
+     */
+    private String normalizeCategoryForPath(String categoryName) {
+        if (categoryName == null) return null;
+
+        // Това е важно - трябва да съвпада с логиката в createSlugFromName()
+        String transliterated = transliterateCyrillic(categoryName.trim());
+
+        return transliterated.toLowerCase()
+                .replaceAll("[^a-z0-9]+", "-")
+                .replaceAll("^-|-$", "");
+    }
+
+    /**
+     * НОВО: Търси категория по частичен път (suffix matching)
+     */
+    private Optional<Category> findCategoryByPartialPath(String partialPath) {
+        if (partialPath == null) return Optional.empty();
+
+        return categoryRepository.findAll().stream()
+                .filter(cat -> cat.getCategoryPath() != null)
+                .filter(cat -> cat.getCategoryPath().toLowerCase().endsWith(partialPath.toLowerCase()))
+                .findFirst();
+    }
+
+    /**
+     * НОВО: Подобрено търсене по име с валидация на parent
+     */
+    private Optional<Category> findCategoryByName(String categoryName, String expectedParentName) {
+        if (categoryName == null) return Optional.empty();
+
+        List<Category> candidates = categoryRepository.findAll().stream()
+                .filter(cat -> categoryName.equalsIgnoreCase(cat.getNameBg()))
+                .toList();
+
+        if (candidates.isEmpty()) {
+            return Optional.empty();
+        }
+
+        // Ако имаме очаквано име на parent, филтрираме
+        if (expectedParentName != null) {
+            for (Category candidate : candidates) {
+                if (candidate.getParent() != null &&
+                        expectedParentName.equalsIgnoreCase(candidate.getParent().getNameBg())) {
+                    return Optional.of(candidate);
+                }
+            }
+        }
+
+        // Връщаме първия валиден кандидат
+        return candidates.stream().findFirst();
     }
 
     private Category findCategoryByNameEnhanced(String categoryName,
@@ -1756,6 +1825,7 @@ public class SyncService {
 
             setImagesFromTekraXML(product, rawData);
 
+            // ✅ ВАЖНО: Ако няма категория, опитваме се да я намерим
             if (product.getCategory() == null) {
                 setCategoryFromTekraXML(product, rawData, categorySlug);
             }
@@ -2762,4 +2832,265 @@ public class SyncService {
             this.errors = errors;
         }
     }
+
+    private void analyzeCategoryPaths() {
+        log.info("=== CATEGORY PATH ANALYSIS ===");
+
+        List<Category> allCategories = categoryRepository.findAll();
+
+        Map<String, Long> pathCounts = allCategories.stream()
+                .filter(cat -> cat.getCategoryPath() != null)
+                .collect(Collectors.groupingBy(Category::getCategoryPath, Collectors.counting()));
+
+        log.info("Total categories: {}", allCategories.size());
+        log.info("Categories with paths: {}", pathCounts.size());
+
+        // Показваме категории с еднакви имена но различни пътища
+        Map<String, List<Category>> byName = allCategories.stream()
+                .filter(cat -> cat.getNameBg() != null)
+                .collect(Collectors.groupingBy(Category::getNameBg));
+
+        byName.entrySet().stream()
+                .filter(e -> e.getValue().size() > 1)
+                .forEach(e -> {
+                    log.info("Duplicate name '{}' has {} categories:", e.getKey(), e.getValue().size());
+                    e.getValue().forEach(cat ->
+                            log.info("  - Path: '{}', ID: {}", cat.getCategoryPath(), cat.getId())
+                    );
+                });
+
+        log.info("==============================");
+    }
+
+    private void logProductCategoryMapping(Map<String, Object> product, Category matchedCategory) {
+        String cat1 = getStringValue(product, "category_1");
+        String cat2 = getStringValue(product, "category_2");
+        String cat3 = getStringValue(product, "category_3");
+        String sku = getStringValue(product, "sku");
+
+        String expectedPath = buildCategoryPath(cat1, cat2, cat3);
+
+        log.info("Product: {} | XML Path: {} | Matched: {} ({})",
+                sku,
+                expectedPath,
+                matchedCategory != null ? matchedCategory.getNameBg() : "NULL",
+                matchedCategory != null ? matchedCategory.getCategoryPath() : "N/A"
+        );
+    }
+
+    /**
+     * Валидира йерархията след sync
+     */
+    private void validateCategoryHierarchy() {
+        log.info("=== VALIDATING CATEGORY HIERARCHY ===");
+
+        List<Category> allCategories = categoryRepository.findAll().stream()
+                .filter(cat -> cat.getTekraSlug() != null)
+                .toList();
+
+        int orphans = 0;
+        int valid = 0;
+
+        for (Category cat : allCategories) {
+            if (cat.getParent() != null) {
+                Long parentId = cat.getParent().getId();
+
+                boolean parentExists = categoryRepository.existsById(parentId);
+
+                if (!parentExists) {
+                    log.error("✗ ORPHAN: '{}' (ID: {}) has parent_id={} which DOES NOT EXIST!",
+                            cat.getNameBg(), cat.getId(), parentId);
+                    orphans++;
+                } else {
+                    valid++;
+                }
+            }
+        }
+
+        log.info("Validation complete: {} valid, {} orphans", valid, orphans);
+
+        if (orphans > 0) {
+            log.error("⚠ Found {} orphan categories! Check logs above.", orphans);
+        }
+
+        log.info("====================================");
+    }
+
+    /**
+     * ✅ ВРЕМЕНЕН DEBUG метод
+     * Използвай го за да видиш ТОЧНО каква структура връща Tekra API
+     * Добави го в SyncService.java и го извикай преди syncTekraCategories()
+     */
+    public void debugTekraStructure() {
+        log.info("=== DEBUG: TEKRA CATEGORY STRUCTURE ===");
+
+        try {
+            List<Map<String, Object>> externalCategories = tekraApiService.getCategoriesRaw();
+
+            // Намираме videonablyudenie
+            Map<String, Object> mainCategory = externalCategories.stream()
+                    .filter(cat -> "videonablyudenie".equals(getString(cat, "slug")))
+                    .findFirst()
+                    .orElse(null);
+
+            if (mainCategory == null) {
+                log.error("videonablyudenie not found!");
+                return;
+            }
+
+            log.info("MAIN: {} (id: {}, slug: {})",
+                    getString(mainCategory, "name"),
+                    getString(mainCategory, "id"),
+                    getString(mainCategory, "slug"));
+
+            // Виж level-2 категориите
+            Object subCategoriesObj = mainCategory.get("sub_categories");
+            if (subCategoriesObj instanceof List) {
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> subCategories = (List<Map<String, Object>>) subCategoriesObj;
+
+                log.info("Found {} LEVEL-2 categories:", subCategories.size());
+
+                for (Map<String, Object> subCat : subCategories) {
+                    String name = getString(subCat, "name");
+                    String slug = getString(subCat, "slug");
+                    String id = getString(subCat, "id");
+                    String count = getString(subCat, "count");
+
+                    log.info("  L2: '{}' (id: {}, slug: {}, products: {})",
+                            name, id, slug, count);
+
+                    // Виж level-3 категориите
+                    Object subSubCatObj = subCat.get("subsubcat");
+                    if (subSubCatObj instanceof List) {
+                        @SuppressWarnings("unchecked")
+                        List<Map<String, Object>> subSubCategories = (List<Map<String, Object>>) subSubCatObj;
+
+                        for (Map<String, Object> subSubCat : subSubCategories) {
+                            String subName = getString(subSubCat, "name");
+                            String subSlug = getString(subSubCat, "slug");
+                            String subId = getString(subSubCat, "id");
+                            String subCount = getString(subSubCat, "count");
+
+                            log.info("    └─ L3: '{}' (id: {}, slug: {}, products: {})",
+                                    subName, subId, subSlug, subCount);
+                        }
+                    }
+                }
+            }
+
+            log.info("=======================================");
+
+        } catch (Exception e) {
+            log.error("Debug failed: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * ✅ Debug метод - Търси специално "HD аналогови системи" в Tekra API
+     */
+    public void debugHdAnalogCategory() {
+        log.info("=== DEBUG: Searching for HD Analog category in Tekra ===");
+
+        try {
+            List<Map<String, Object>> externalCategories = tekraApiService.getCategoriesRaw();
+
+            Map<String, Object> mainCategory = externalCategories.stream()
+                    .filter(cat -> "videonablyudenie".equals(getString(cat, "slug")))
+                    .findFirst()
+                    .orElse(null);
+
+            if (mainCategory == null) {
+                log.error("Main category not found!");
+                return;
+            }
+
+            Object subCategoriesObj = mainCategory.get("sub_categories");
+            if (!(subCategoriesObj instanceof List)) {
+                log.error("No sub_categories found!");
+                return;
+            }
+
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> subCategories = (List<Map<String, Object>>) subCategoriesObj;
+
+            log.info("Total level-2 categories: {}", subCategories.size());
+
+            // Търсим "HD аналогови" или подобни
+            for (Map<String, Object> subCat : subCategories) {
+                String name = getString(subCat, "name");
+                String slug = getString(subCat, "slug");
+                String id = getString(subCat, "id");
+
+                log.info("L2: name='{}', slug='{}', id='{}'", name, slug, id);
+
+                // Проверяваме дали има подкатегории
+                Object subSubCatObj = subCat.get("subsubcat");
+                if (subSubCatObj instanceof List) {
+                    @SuppressWarnings("unchecked")
+                    List<Map<String, Object>> subSubCategories = (List<Map<String, Object>>) subSubCatObj;
+
+                    log.info("  └─ Has {} level-3 categories:", subSubCategories.size());
+
+                    for (Map<String, Object> subSubCat : subSubCategories) {
+                        String subName = getString(subSubCat, "name");
+                        String subSlug = getString(subSubCat, "slug");
+                        log.info("     - '{}' (slug: {})", subName, subSlug);
+                    }
+                }
+            }
+
+            // Специално търсене за "Камери" и "Записващи устройства"
+            log.info("\n=== Searching for 'Камери' in all categories ===");
+            for (Map<String, Object> subCat : subCategories) {
+                Object subSubCatObj = subCat.get("subsubcat");
+                if (subSubCatObj instanceof List) {
+                    @SuppressWarnings("unchecked")
+                    List<Map<String, Object>> subSubCategories = (List<Map<String, Object>>) subSubCatObj;
+
+                    for (Map<String, Object> subSubCat : subSubCategories) {
+                        String subName = getString(subSubCat, "name");
+                        if (subName != null && subName.toLowerCase().contains("камер")) {
+                            log.info("Found 'Камери' under: '{}' (slug: {})",
+                                    getString(subCat, "name"),
+                                    getString(subCat, "slug"));
+                        }
+                    }
+                }
+            }
+
+            log.info("\n=== Searching for 'Записващи устройства' ===");
+            for (Map<String, Object> subCat : subCategories) {
+                Object subSubCatObj = subCat.get("subsubcat");
+                if (subSubCatObj instanceof List) {
+                    @SuppressWarnings("unchecked")
+                    List<Map<String, Object>> subSubCategories = (List<Map<String, Object>>) subSubCatObj;
+
+                    for (Map<String, Object> subSubCat : subSubCategories) {
+                        String subName = getString(subSubCat, "name");
+                        if (subName != null && subName.toLowerCase().contains("записващ")) {
+                            log.info("Found 'Записващи устройства' under: '{}' (slug: {})",
+                                    getString(subCat, "name"),
+                                    getString(subCat, "slug"));
+                        }
+                    }
+                }
+            }
+
+            log.info("==============================================");
+
+        } catch (Exception e) {
+            log.error("Debug failed: {}", e.getMessage(), e);
+        }
+    }
+
+// ═══════════════════════════════════════════════════════════════
+// ИЗПОЛЗВАЙ ТАКА:
+//
+// @GetMapping("/admin/debug-tekra")
+// public String debugTekra() {
+//     syncService.debugTekraStructure();
+//     return "Check logs";
+// }
+// ═══════════════════════════════════════════════════════════════
 }

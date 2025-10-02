@@ -34,3 +34,7 @@ build/
 
 ### Environment Variables ###
 .env
+
+lucene-indexes/
+logs/
+uploads/

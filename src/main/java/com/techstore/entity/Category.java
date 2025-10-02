@@ -30,6 +30,9 @@ public class Category extends BaseEntity {
     @Column(name = "external_id", unique = true)
     private Long externalId;
 
+    @Column(name = "category_path", length = 500)
+    private String categoryPath;
+
     @FullTextField
     @Column(name = "name_en")
     private String nameEn;
@@ -59,5 +62,21 @@ public class Category extends BaseEntity {
 
     public boolean isParentCategory() {
         return parent == null;
+    }
+
+    public String generateCategoryPath() {
+        List<String> pathParts = new ArrayList<>();
+        Category current = this;
+
+        while (current != null) {
+            if (current.getTekraSlug() != null) {
+                pathParts.add(0, current.getTekraSlug());
+            } else if (current.getSlug() != null) {
+                pathParts.add(0, current.getSlug());
+            }
+            current = current.getParent();
+        }
+
+        return String.join("/", pathParts);
     }
 }

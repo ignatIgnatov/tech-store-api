@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.Hidden;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -117,27 +118,15 @@ public class TekraController {
         }
     }
 
-    @PostMapping(value = "/complete")
-    public ResponseEntity<Map<String, Object>> syncComplete() {
-        try {
-            long startTime = System.currentTimeMillis();
-            syncService.syncTekraComplete();
-            long duration = System.currentTimeMillis() - startTime;
+    @GetMapping("/admin/debug-tekra")
+    public String debugTekra() {
+        syncService.debugTekraStructure();
+        return "Check logs";
+    }
 
-            Map<String, Object> response = Map.of(
-                    "success", true,
-                    "message", "Complete Tekra synchronization finished",
-                    "duration", duration + "ms"
-            );
-
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            log.error("Error during complete Tekra sync", e);
-            Map<String, Object> response = Map.of(
-                    "success", false,
-                    "message", "Error: " + e.getMessage()
-            );
-            return ResponseEntity.status(500).body(response);
-        }
+    @GetMapping("/admin/debug-analog")
+    public String debugAnalog() {
+        syncService.debugHdAnalogCategory();
+        return "Check logs";
     }
 }

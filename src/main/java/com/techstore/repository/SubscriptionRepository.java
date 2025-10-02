@@ -9,4 +9,5 @@ import java.util.Optional;
 @Repository
 public interface SubscriptionRepository extends JpaRepository<Subscription, Long> {
     Optional<Subscription> findByEmail(String email);
+    boolean existsByEmail(String email);
 }

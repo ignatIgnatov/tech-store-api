@@ -2,6 +2,7 @@ package com.techstore.controller;
 
 import com.techstore.dto.response.SubscriptionDto;
 import com.techstore.service.SubscriptionService;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,21 +25,27 @@ public class SubscriptionController {
 
     private final SubscriptionService subscriptionService;
 
-    @GetMapping
+    @GetMapping("/all")
     public ResponseEntity<List<SubscriptionDto>> getAllSubscriptions() {
         List<SubscriptionDto> response = subscriptionService.getAllSubscriptions();
         return ResponseEntity.ok(response);
     }
 
     @PostMapping
-    public ResponseEntity<SubscriptionDto> subscribe(@PathVariable("email") String email) {
+    public ResponseEntity<SubscriptionDto> subscribe(@Parameter String email) {
         log.info("Subscribed: {}", email);
         SubscriptionDto response = subscriptionService.subscribe(email);
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping
+    public ResponseEntity<Boolean> isSubscribed(@Parameter String email) {
+        Boolean response = subscriptionService.isSubscribed(email);
+        return ResponseEntity.ok(response);
+    }
+
     @DeleteMapping
-    public ResponseEntity<String> unsubscribe(@PathVariable("email") String email) {
+    public ResponseEntity<String> unsubscribe(@Parameter String email) {
         log.info("Unsubscribed: {}", email);
         subscriptionService.unsubscribe(email);
         return ResponseEntity.ok("Unsubscribed: " + email);

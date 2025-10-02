@@ -42,4 +42,8 @@ public class SubscriptionService {
                 .email(subscription.getEmail())
                 .build();
     }
+
+    public Boolean isSubscribed(String email) {
+        return subscriptionRepository.existsByEmail(email);
+    }
 }

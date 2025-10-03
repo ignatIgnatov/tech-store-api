@@ -1025,18 +1025,21 @@ public class SyncService {
 
     // ============ CATEGORY MATCHING WITH FALLBACK ============
 
-    /**
-     * ✅ ПОДОБРЕНА ВЕРСИЯ: Намира най-специфичната категория с множество fallback стратегии
-     */
     private Category findMostSpecificCategory(Map<String, Object> product,
                                               Map<String, Category> categoriesByName,
                                               Map<String, Category> categoriesBySlug,
                                               Map<String, Category> categoriesByTekraSlug,
-                                              Map<String, Integer> matchTypeStats) {  // ✅ Добави параметър
-        String category3 = getStringValue(product, "category_3");
-        String category2 = getStringValue(product, "category_2");
-        String category1 = getStringValue(product, "category_1");
-        String sku = getStringValue(product, "sku");
+                                              Map<String, Integer> matchTypeStats) {
+        // ✅ FIX: Make variables final for lambda usage
+        final String category3Raw = getStringValue(product, "category_3");
+        final String category2Raw = getStringValue(product, "category_2");
+        final String category1Raw = getStringValue(product, "category_1");
+        final String sku = getStringValue(product, "sku");
+
+        // ✅ Normalize null/"null" to actual null
+        final String category3 = "null".equalsIgnoreCase(category3Raw) ? null : category3Raw;
+        final String category2 = "null".equalsIgnoreCase(category2Raw) ? null : category2Raw;
+        final String category1 = "null".equalsIgnoreCase(category1Raw) ? null : category1Raw;
 
         String expectedPath = buildCategoryPath(category1, category2, category3);
 
@@ -1048,7 +1051,7 @@ public class SyncService {
 
         log.debug("Product {}: Expected path '{}'", sku, expectedPath);
 
-        // СТРАТЕГИЯ 1: Точно съвпадение на пълния път
+        // СТРАТЕГИЯ 1: Точно съвпадение на пълния път (работи за L1/L2/L3)
         Optional<Category> exactMatch = categoryRepository.findAll().stream()
                 .filter(cat -> cat.getCategoryPath() != null)
                 .filter(cat -> expectedPath.equalsIgnoreCase(cat.getCategoryPath()))
@@ -1056,11 +1059,48 @@ public class SyncService {
 
         if (exactMatch.isPresent() && isValidCategory(exactMatch.get())) {
             log.info("✓✓✓ EXACT PATH: {} -> '{}'", sku, exactMatch.get().getNameBg());
-            matchTypeStats.put("perfect_path", matchTypeStats.get("perfect_path") + 1);  // ✅
+            matchTypeStats.put("perfect_path", matchTypeStats.get("perfect_path") + 1);
             return exactMatch.get();
         }
 
-        // СТРАТЕГИЯ 2: Частично съвпадение (L1+L2)
+        // ✅ СТРАТЕГИЯ 2: Ако няма category_3, търси level-2 категория по ИМЕ на category_2
+        if (category3 == null && category2 != null && category1 != null) {
+            log.debug("Product {}: No category_3, searching for level-2 category by name", sku);
+
+            // Първо търси по точно име
+            Optional<Category> level2Match = categoryRepository.findAll().stream()
+                    .filter(cat -> category2.equalsIgnoreCase(cat.getNameBg()))
+                    .filter(cat -> cat.getParent() != null)
+                    .filter(cat -> category1.equalsIgnoreCase(cat.getParent().getNameBg()))
+                    .filter(this::isValidCategory)
+                    .findFirst();
+
+            if (level2Match.isPresent()) {
+                log.info("✓✓ LEVEL-2 BY NAME: {} -> '{}' (parent: '{}')",
+                        sku, level2Match.get().getNameBg(), level2Match.get().getParent().getNameBg());
+                matchTypeStats.put("partial_path", matchTypeStats.get("partial_path") + 1);
+                return level2Match.get();
+            }
+
+            // Ако не намери по име, търси по tekraSlug
+            String normalizedCat2 = normalizeCategoryForPath(category2);
+            Optional<Category> level2TekraMatch = categoryRepository.findAll().stream()
+                    .filter(cat -> cat.getTekraSlug() != null)
+                    .filter(cat -> normalizedCat2.equalsIgnoreCase(cat.getTekraSlug()))
+                    .filter(cat -> cat.getParent() != null)
+                    .filter(cat -> category1.equalsIgnoreCase(cat.getParent().getNameBg()))
+                    .filter(this::isValidCategory)
+                    .findFirst();
+
+            if (level2TekraMatch.isPresent()) {
+                log.info("✓✓ LEVEL-2 BY TEKRA SLUG: {} -> '{}' (tekraSlug: '{}')",
+                        sku, level2TekraMatch.get().getNameBg(), level2TekraMatch.get().getTekraSlug());
+                matchTypeStats.put("partial_path", matchTypeStats.get("partial_path") + 1);
+                return level2TekraMatch.get();
+            }
+        }
+
+        // СТРАТЕГИЯ 3: Частично съвпадение (L1+L2) чрез path
         if (category2 != null) {
             String partialPath = buildCategoryPath(category1, category2, null);
 
@@ -1072,12 +1112,12 @@ public class SyncService {
             if (partialMatch.isPresent() && isValidCategory(partialMatch.get())) {
                 log.info("✓✓ PARTIAL PATH (L1+L2): {} -> '{}' | L3 '{}' not found",
                         sku, partialMatch.get().getNameBg(), category3);
-                matchTypeStats.put("partial_path", matchTypeStats.get("partial_path") + 1);  // ✅
+                matchTypeStats.put("partial_path", matchTypeStats.get("partial_path") + 1);
                 return partialMatch.get();
             }
         }
 
-        // СТРАТЕГИЯ 3: Само L1
+        // СТРАТЕГИЯ 4: Само L1
         if (category1 != null) {
             String l1Path = buildCategoryPath(category1, null, null);
 
@@ -1088,12 +1128,12 @@ public class SyncService {
 
             if (l1Match.isPresent() && isValidCategory(l1Match.get())) {
                 log.info("✓ L1 FALLBACK: {} -> '{}'", sku, l1Match.get().getNameBg());
-                matchTypeStats.put("partial_path", matchTypeStats.get("partial_path") + 1);  // ✅
+                matchTypeStats.put("partial_path", matchTypeStats.get("partial_path") + 1);
                 return l1Match.get();
             }
         }
 
-        // СТРАТЕГИЯ 4: tekraSlug
+        // СТРАТЕГИЯ 5: tekraSlug (за level-3 категории)
         if (category3 != null) {
             String normalizedCat3 = normalizeCategoryForPath(category3);
             Optional<Category> match = categoryRepository.findAll().stream()
@@ -1103,7 +1143,7 @@ public class SyncService {
 
             if (match.isPresent()) {
                 log.info("✓ TEKRA SLUG (L3): {} -> '{}'", sku, match.get().getNameBg());
-                matchTypeStats.put("name_match", matchTypeStats.get("name_match") + 1);  // ✅
+                matchTypeStats.put("name_match", matchTypeStats.get("name_match") + 1);
                 return match.get();
             }
         }
@@ -1117,12 +1157,12 @@ public class SyncService {
 
             if (match.isPresent()) {
                 log.info("✓ TEKRA SLUG (L2): {} -> '{}'", sku, match.get().getNameBg());
-                matchTypeStats.put("name_match", matchTypeStats.get("name_match") + 1);  // ✅
+                matchTypeStats.put("name_match", matchTypeStats.get("name_match") + 1);
                 return match.get();
             }
         }
 
-        // СТРАТЕГИЯ 5: име
+        // СТРАТЕГИЯ 6: име (последен fallback)
         if (category3 != null) {
             Optional<Category> match = categoryRepository.findAll().stream()
                     .filter(cat -> category3.equalsIgnoreCase(cat.getNameBg()))
@@ -1131,7 +1171,7 @@ public class SyncService {
 
             if (match.isPresent()) {
                 log.info("✓ NAME (L3): {} -> '{}'", sku, match.get().getNameBg());
-                matchTypeStats.put("name_match", matchTypeStats.get("name_match") + 1);  // ✅
+                matchTypeStats.put("name_match", matchTypeStats.get("name_match") + 1);
                 return match.get();
             }
         }
@@ -1144,7 +1184,7 @@ public class SyncService {
 
             if (match.isPresent()) {
                 log.info("✓ NAME (L2): {} -> '{}'", sku, match.get().getNameBg());
-                matchTypeStats.put("name_match", matchTypeStats.get("name_match") + 1);  // ✅
+                matchTypeStats.put("name_match", matchTypeStats.get("name_match") + 1);
                 return match.get();
             }
         }
@@ -1157,13 +1197,13 @@ public class SyncService {
 
             if (match.isPresent()) {
                 log.info("✓ NAME (L1): {} -> '{}'", sku, match.get().getNameBg());
-                matchTypeStats.put("name_match", matchTypeStats.get("name_match") + 1);  // ✅
+                matchTypeStats.put("name_match", matchTypeStats.get("name_match") + 1);
                 return match.get();
             }
         }
 
         log.warn("✗✗✗ NO MATCH: {} | Path: '{}'", sku, expectedPath);
-        matchTypeStats.put("no_match", matchTypeStats.get("no_match") + 1);  // ✅
+        matchTypeStats.put("no_match", matchTypeStats.get("no_match") + 1);
 
         return null;
     }
@@ -1554,13 +1594,10 @@ public class SyncService {
                 try {
                     Integer count = Integer.parseInt(countStr);
                     category.setSortOrder(count);
-                    category.setShow(count > 0);
                 } catch (NumberFormatException e) {
                     category.setSortOrder(0);
-                    category.setShow(true);
                 }
             } else {
-                category.setShow(true);
                 category.setSortOrder(0);
             }
 

@@ -266,7 +266,7 @@ public class SearchIndexManager {
 
             log.info("✓ Full-text search test: {} results in {}ms", ftCount, ftDuration);
 
-            if (ftDuration > 100) {
+            if (ftDuration > 300) {
                 log.warn("⚠ Search performance is slower than expected ({}ms). Consider checking indexes.",
                         ftDuration);
             } else {

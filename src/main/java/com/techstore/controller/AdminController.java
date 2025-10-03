@@ -1,5 +1,13 @@
 package com.techstore.controller;
 
+import com.techstore.entity.Category;
+import com.techstore.entity.Parameter;
+import com.techstore.entity.ParameterOption;
+import com.techstore.entity.Product;
+import com.techstore.repository.CategoryRepository;
+import com.techstore.repository.ParameterOptionRepository;
+import com.techstore.repository.ParameterRepository;
+import com.techstore.repository.ProductRepository;
 import com.techstore.service.SyncService;
 import com.techstore.service.TekraApiService;
 import io.swagger.v3.oas.annotations.Hidden;
@@ -18,6 +26,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Hidden
@@ -29,7 +38,6 @@ import java.util.stream.Collectors;
 public class AdminController {
 
     private final SyncService syncService;
-    private final TekraApiService tekraApiService;
 
     @PostMapping("/sync/categories")
 //    @PreAuthorize("hasRole('ADMIN')")
@@ -77,47 +85,5 @@ public class AdminController {
             log.error("Error during manual products synchronization", e);
             return ResponseEntity.internalServerError().body("Error during synchronization: " + e.getMessage());
         }
-    }
-
-    @GetMapping("/admin/debug-category-paths")
-    public String debugPaths() {
-        syncService.debugCategoryPathMatching();
-        return "Check logs";
-    }
-
-    @GetMapping("/admin/analyze-product-categories")
-    public String analyzeProductCategories() {
-        List<Map<String, Object>> allProducts = new ArrayList<>();
-
-        // Fetch products under "videonablyudenie"
-        List<Map<String, Object>> products = tekraApiService.getProductsRaw("videonablyudenie");
-        allProducts.addAll(products);
-
-        // Group by category_1
-        Map<String, Long> category1Counts = allProducts.stream()
-                .collect(Collectors.groupingBy(
-                        p -> {
-                            String cat1 = getString(p, "category_1");
-                            return cat1 != null ? cat1 : "NULL";
-                        },
-                        Collectors.counting()
-                ));
-
-        log.info("=== PRODUCTS UNDER videonablyudenie ===");
-        log.info("Total products: {}", allProducts.size());
-        log.info("Breakdown by category_1:");
-        category1Counts.forEach((cat, count) ->
-                log.info("  - '{}': {} products", cat, count)
-        );
-
-        return "Check logs";
-    }
-
-    private String getString(Map<String, Object> map, String key) {
-        Object value = map.get(key);
-        if (value == null) {
-            return null;
-        }
-        return value.toString();
     }
 }

@@ -2631,4 +2631,208 @@ public class SyncService {
             this.errors = errors;
         }
     }
+
+//    @Transactional
+//    public void syncTekraCategories() {
+//        SyncLog syncLog = createSyncLogSimple("TEKRA_CATEGORIES");
+//        long startTime = System.currentTimeMillis();
+//
+//        try {
+//            log.info("Starting Tekra categories synchronization for multiple main categories");
+//
+//            List<Map<String, Object>> externalCategories = tekraApiService.getCategoriesRaw();
+//
+//            if (externalCategories.isEmpty()) {
+//                log.warn("No categories returned from Tekra API");
+//                updateSyncLogSimple(syncLog, LOG_STATUS_SUCCESS, 0, 0, 0, 0, "No categories found", startTime);
+//                return;
+//            }
+//
+//            // ✅ ОБРАБОТКА НА МНОЖЕСТВО ГЛАВНИ КАТЕГОРИИ
+//            List<String> mainCategorySlugs = List.of(
+//                    "videonablyudenie",
+//                    "mrezhovo-oborudvane",
+//                    "zahranvaniya-i-baterii"
+//            );
+//
+//            Map<String, Category> existingCategories = categoryRepository.findAll()
+//                    .stream()
+//                    .filter(cat -> cat.getSlug() != null)
+//                    .collect(Collectors.toMap(
+//                            Category::getSlug,
+//                            cat -> cat,
+//                            (existing, duplicate) -> existing
+//                    ));
+//
+//            long created = 0, updated = 0, skipped = 0;
+//
+//            // ✅ LOOP ПРЕЗ ВСЯКА ГЛАВНА КАТЕГОРИЯ
+//            for (String mainSlug : mainCategorySlugs) {
+//                log.info("=== Processing main category: '{}' ===", mainSlug);
+//
+//                Map<String, Object> mainCategory = externalCategories.stream()
+//                        .filter(extCategory -> mainSlug.equals(getString(extCategory, "slug")))
+//                        .findFirst()
+//                        .orElse(null);
+//
+//                if (mainCategory == null) {
+//                    log.warn("Category '{}' not found in Tekra API", mainSlug);
+//                    continue;
+//                }
+//
+//                // СТЪПКА 1: Създай главната категория
+//                log.info("  STEP 1: Creating main category '{}'", mainSlug);
+//                Category mainCat = createOrUpdateTekraCategory(mainCategory, existingCategories, null);
+//                if (mainCat != null) {
+//                    if (existingCategories.containsKey(mainCat.getSlug())) {
+//                        updated++;
+//                    } else {
+//                        created++;
+//                        existingCategories.put(mainCat.getSlug(), mainCat);
+//                    }
+//                    log.info("  ✓ Main category ID: {}", mainCat.getId());
+//                }
+//
+//                // СТЪПКА 2: Обработи level-2 категории
+//                log.info("  STEP 2: Processing level-2 categories for '{}'", mainSlug);
+//                Object subCategoriesObj = mainCategory.get("sub_categories");
+//                if (!(subCategoriesObj instanceof List)) {
+//                    log.warn("  No sub_categories found in '{}'", mainSlug);
+//                    continue;
+//                }
+//
+//                @SuppressWarnings("unchecked")
+//                List<Map<String, Object>> subCategories = (List<Map<String, Object>>) subCategoriesObj;
+//                log.info("  Found {} level-2 categories", subCategories.size());
+//
+//                Map<String, Category> level2Categories = new HashMap<>();
+//
+//                for (int i = 0; i < subCategories.size(); i++) {
+//                    Map<String, Object> subCat = subCategories.get(i);
+//
+//                    try {
+//                        String subCatSlug = getString(subCat, "slug");
+//                        String subCatName = getString(subCat, "name");
+//
+//                        log.info("  Processing level-2 [{}/{}]: '{}' (slug: {})",
+//                                i + 1, subCategories.size(), subCatName, subCatSlug);
+//
+//                        if (subCatSlug == null || subCatName == null) {
+//                            log.warn("  Skipping level-2 category with missing fields");
+//                            skipped++;
+//                            continue;
+//                        }
+//
+//                        Category level2Cat = createOrUpdateTekraCategory(subCat, existingCategories, mainCat);
+//                        if (level2Cat != null) {
+//                            if (existingCategories.containsKey(level2Cat.getSlug())) {
+//                                updated++;
+//                            } else {
+//                                created++;
+//                                existingCategories.put(level2Cat.getSlug(), level2Cat);
+//                            }
+//
+//                            level2Categories.put(subCatSlug, level2Cat);
+//
+//                            log.info("    ✓ Created/Updated: '{}' (ID: {}, path: {})",
+//                                    level2Cat.getNameBg(), level2Cat.getId(), level2Cat.getCategoryPath());
+//                        }
+//
+//                    } catch (Exception e) {
+//                        log.error("  ERROR processing level-2 category [{}]: {}", i + 1, e.getMessage(), e);
+//                        skipped++;
+//                    }
+//                }
+//
+//                log.info("  STEP 2 COMPLETE: {} level-2 categories processed", level2Categories.size());
+//
+//                // СТЪПКА 3: Обработи level-3 категории
+//                log.info("  STEP 3: Processing level-3 categories for '{}'", mainSlug);
+//
+//                int totalLevel3 = 0;
+//                for (Map<String, Object> subCat : subCategories) {
+//                    try {
+//                        String subCatSlug = getString(subCat, "slug");
+//                        Category parentCategory = level2Categories.get(subCatSlug);
+//
+//                        if (parentCategory == null) {
+//                            continue;
+//                        }
+//
+//                        Object subSubCatObj = subCat.get("subsubcat");
+//                        if (!(subSubCatObj instanceof List)) {
+//                            continue;
+//                        }
+//
+//                        @SuppressWarnings("unchecked")
+//                        List<Map<String, Object>> subSubCategories = (List<Map<String, Object>>) subSubCatObj;
+//
+//                        for (Map<String, Object> subSubCat : subSubCategories) {
+//                            try {
+//                                String subSubCatSlug = getString(subSubCat, "slug");
+//                                String subSubCatName = getString(subSubCat, "name");
+//
+//                                if (subSubCatSlug == null || subSubCatName == null) {
+//                                    skipped++;
+//                                    continue;
+//                                }
+//
+//                                if (parentCategory.getId() == null) {
+//                                    skipped++;
+//                                    continue;
+//                                }
+//
+//                                Category level3Cat = createOrUpdateTekraCategory(
+//                                        subSubCat, existingCategories, parentCategory);
+//
+//                                if (level3Cat != null) {
+//                                    if (existingCategories.containsKey(level3Cat.getSlug())) {
+//                                        updated++;
+//                                    } else {
+//                                        created++;
+//                                        existingCategories.put(level3Cat.getSlug(), level3Cat);
+//                                    }
+//
+//                                    totalLevel3++;
+//
+//                                    log.info("    ✓ Created/Updated level-3: '{}' (ID: {}, parent_id: {}, path: {})",
+//                                            level3Cat.getNameBg(),
+//                                            level3Cat.getId(),
+//                                            level3Cat.getParent() != null ? level3Cat.getParent().getId() : "NULL",
+//                                            level3Cat.getCategoryPath());
+//                                }
+//
+//                            } catch (Exception e) {
+//                                log.error("    ERROR processing level-3 category: {}", e.getMessage(), e);
+//                                skipped++;
+//                            }
+//                        }
+//
+//                    } catch (Exception e) {
+//                        log.error("  ERROR processing subcategories: {}", e.getMessage(), e);
+//                        skipped++;
+//                    }
+//                }
+//
+//                log.info("  STEP 3 COMPLETE: {} level-3 categories processed", totalLevel3);
+//                log.info("=== Completed main category: '{}' ===\n", mainSlug);
+//            }
+//
+//            entityManager.flush();
+//            entityManager.clear();
+//
+//            long totalCategories = created + updated;
+//            updateSyncLogSimple(syncLog, LOG_STATUS_SUCCESS, totalCategories, created, updated, skipped,
+//                    skipped > 0 ? String.format("Skipped %d categories", skipped) : null, startTime);
+//
+//            log.info("=== Tekra categories sync completed ===");
+//            log.info("Total: {}, Created: {}, Updated: {}, Skipped: {}",
+//                    totalCategories, created, updated, skipped);
+//
+//        } catch (Exception e) {
+//            log.error("=== SYNC FAILED ===", e);
+//            updateSyncLogSimple(syncLog, LOG_STATUS_FAILED, 0, 0, 0, 0, e.getMessage(), startTime);
+//            throw e;
+//        }
+//    }
 }

@@ -1,15 +1,6 @@
 package com.techstore.controller;
 
-import com.techstore.entity.Category;
-import com.techstore.entity.Parameter;
-import com.techstore.entity.ParameterOption;
-import com.techstore.entity.Product;
-import com.techstore.repository.CategoryRepository;
-import com.techstore.repository.ParameterOptionRepository;
-import com.techstore.repository.ParameterRepository;
-import com.techstore.repository.ProductRepository;
 import com.techstore.service.SyncService;
-import com.techstore.service.TekraApiService;
 import io.swagger.v3.oas.annotations.Hidden;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,16 +9,9 @@ import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.stream.Collectors;
 
 @Hidden
 @RestController
@@ -85,5 +69,11 @@ public class AdminController {
             log.error("Error during manual products synchronization", e);
             return ResponseEntity.internalServerError().body("Error during synchronization: " + e.getMessage());
         }
+    }
+
+    @GetMapping("/sync/duplicates")
+    public ResponseEntity<Map<String, Object>> getDuplicatesStats() {
+        Map<String, Object> response = syncService.getDuplicationStats();
+        return ResponseEntity.ok(response);
     }
 }

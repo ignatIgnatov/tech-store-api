@@ -15,7 +15,6 @@ import com.techstore.entity.Product;
 import com.techstore.entity.ProductParameter;
 import com.techstore.entity.SyncLog;
 import com.techstore.enums.ProductStatus;
-import com.techstore.exception.ResourceNotFoundException;
 import com.techstore.repository.CategoryRepository;
 import com.techstore.repository.ManufacturerRepository;
 import com.techstore.repository.ParameterOptionRepository;
@@ -31,7 +30,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -1382,13 +1380,46 @@ public class SyncService {
     }
 
     private void setManufacturerFromName(Product product, String manufacturerName) {
-        manufacturerRepository.findByName(manufacturerName)
-                .or(() -> {
-                    Manufacturer manufacturer = new Manufacturer();
-                    manufacturer.setName(manufacturerName);
-                    return Optional.of(manufacturerRepository.save(manufacturer));
-                })
-                .ifPresent(product::setManufacturer);
+        if (manufacturerName == null || manufacturerName.trim().isEmpty()) {
+            return;
+        }
+
+        String normalizedName = normalizeManufacturerName(manufacturerName);
+
+        // Търсим по точно име
+        Optional<Manufacturer> existingOpt = manufacturerRepository.findByName(manufacturerName);
+
+        if (existingOpt.isEmpty()) {
+            // Търсим по нормализирано име (за случаи с малки/големи букви или spacing)
+            List<Manufacturer> allManufacturers = manufacturerRepository.findAll();
+
+            for (Manufacturer m : allManufacturers) {
+                if (normalizedName.equals(normalizeManufacturerName(m.getName()))) {
+                    log.debug("Found existing manufacturer by normalized name: {} ≈ {}",
+                            manufacturerName, m.getName());
+                    product.setManufacturer(m);
+                    return;
+                }
+            }
+
+            // Създаваме нов
+            Manufacturer manufacturer = new Manufacturer();
+            manufacturer.setName(manufacturerName);
+            manufacturer = manufacturerRepository.save(manufacturer);
+            product.setManufacturer(manufacturer);
+            log.info("Created new manufacturer: {}", manufacturerName);
+        } else {
+            product.setManufacturer(existingOpt.get());
+        }
+    }
+
+    private String normalizeManufacturerName(String name) {
+        if (name == null) return "";
+
+        return name.toLowerCase()
+                .trim()
+                .replaceAll("\\s+", " ")
+                .replaceAll("[^a-zа-я0-9\\s]+", "");  // Премахва специални символи
     }
 
     // ============ PARAMETER MAPPING ============
@@ -1506,21 +1537,34 @@ public class SyncService {
 
     private ParameterOption findOrCreateParameterOption(Parameter parameter, String value) {
         try {
-            Optional<ParameterOption> option = parameterOptionRepository.findByParameterAndNameBg(parameter, value);
+            // Нормализираме стойността за по-добро сравнение
+            String normalizedValue = normalizeParameterValue(value);
+
+            // СТЪПКА 1: Търсим по точно съвпадение
+            Optional<ParameterOption> option = parameterOptionRepository
+                    .findByParameterAndNameBg(parameter, value);
 
             if (option.isPresent()) {
                 return option.get();
             }
 
-            List<ParameterOption> allOptions = parameterOptionRepository.findByParameterIdOrderByOrderAsc(parameter.getId());
+            // СТЪПКА 2: Търсим по нормализирана стойност (case-insensitive)
+            List<ParameterOption> allOptions = parameterOptionRepository
+                    .findByParameterIdOrderByOrderAsc(parameter.getId());
 
             for (ParameterOption opt : allOptions) {
-                if (value.equalsIgnoreCase(opt.getNameBg()) ||
-                        (opt.getNameEn() != null && value.equalsIgnoreCase(opt.getNameEn()))) {
+                String optNormalizedBg = normalizeParameterValue(opt.getNameBg());
+                String optNormalizedEn = normalizeParameterValue(opt.getNameEn());
+
+                if (normalizedValue.equals(optNormalizedBg) ||
+                        normalizedValue.equals(optNormalizedEn)) {
+                    log.debug("Found existing parameter option by normalized value: {} ≈ {}",
+                            value, opt.getNameBg());
                     return opt;
                 }
             }
 
+            // СТЪПКА 3: Създаваме нова опция
             ParameterOption newOption = new ParameterOption();
             newOption.setParameter(parameter);
             newOption.setNameBg(value);
@@ -1540,6 +1584,17 @@ public class SyncService {
         }
     }
 
+    /**
+     * Нормализация на стойност на параметър за сравнение
+     */
+    private String normalizeParameterValue(String value) {
+        if (value == null) return "";
+
+        return value.toLowerCase()
+                .trim()
+                .replaceAll("\\s+", " ");
+    }
+
     // ============ HELPER METHODS FOR STRUCTURAL CATEGORIES ============
 
     private Category createOrUpdateTekraCategory(Map<String, Object> rawData,
@@ -1555,38 +1610,49 @@ public class SyncService {
                 return null;
             }
 
+            // ✅ ПОДОБРЕНА ПРОВЕРКА: Включва проверка по име за Vali категории
             Optional<Category> existingCategoryOpt = findExistingCategoryByTekraData(
-                    tekraId, tekraSlug, parentCategory);
+                    tekraId, tekraSlug, name, parentCategory);
 
             Category category;
             boolean isNew = false;
+            boolean isReused = false;
 
             if (existingCategoryOpt.isPresent()) {
                 category = existingCategoryOpt.get();
 
-                boolean parentMatches = false;
-                if (parentCategory == null && category.getParent() == null) {
-                    parentMatches = true;
-                } else if (parentCategory != null && category.getParent() != null &&
-                        parentCategory.getId().equals(category.getParent().getId())) {
-                    parentMatches = true;
+                // Проверка дали това е Vali категория (няма tekraId)
+                if (category.getTekraId() == null) {
+                    isReused = true;
+                    log.info("✓✓ REUSING existing Vali category: '{}' (ID: {}) for Tekra category '{}'",
+                            category.getNameBg(), category.getId(), name);
                 }
+
+                // Проверка дали parent съвпада
+                boolean parentMatches = parentMatches(category, parentCategory);
 
                 if (!parentMatches) {
                     log.warn("Found category but WRONG parent! Creating NEW category.");
                     category = new Category();
-                    category.setTekraId(tekraId);
                     isNew = true;
                 }
             } else {
                 category = new Category();
-                category.setTekraId(tekraId);
                 isNew = true;
             }
 
+            // ✅ Задаваме Tekra полета (дори ако преизползваме Vali категория)
+            category.setTekraId(tekraId);
             category.setTekraSlug(tekraSlug);
-            category.setNameBg(name);
-            category.setNameEn(name);
+
+            // Запазваме оригиналното име ако вече има (от Vali)
+            if (category.getNameBg() == null || isNew) {
+                category.setNameBg(name);
+            }
+            if (category.getNameEn() == null || isNew) {
+                category.setNameEn(name);
+            }
+
             category.setParent(parentCategory);
 
             String countStr = getString(rawData, "count");
@@ -1601,7 +1667,14 @@ public class SyncService {
                 category.setSortOrder(0);
             }
 
-            String uniqueSlug = generateUniqueSlug(tekraSlug, name, parentCategory, existingCategories);
+            // Генериране на уникален slug
+            String uniqueSlug;
+            if (category.getSlug() != null && !isNew) {
+                // Запазваме съществуващия slug ако категорията вече съществува
+                uniqueSlug = category.getSlug();
+            } else {
+                uniqueSlug = generateUniqueSlug(tekraSlug, name, parentCategory, existingCategories);
+            }
             category.setSlug(uniqueSlug);
 
             category.setCategoryPath(category.generateCategoryPath());
@@ -1609,7 +1682,10 @@ public class SyncService {
             category = categoryRepository.save(category);
             categoryRepository.flush();
 
-            if (isNew) {
+            if (isReused) {
+                log.info("✓✓✓ REUSED Vali category: '{}' | slug='{}' | path='{}' | tekraId={}",
+                        name, uniqueSlug, category.getCategoryPath(), tekraId);
+            } else if (isNew) {
                 log.info("✓ CREATED: '{}' | slug='{}' | path='{}'",
                         name, uniqueSlug, category.getCategoryPath());
             } else {
@@ -1757,7 +1833,9 @@ public class SyncService {
 
     private Optional<Category> findExistingCategoryByTekraData(String tekraId,
                                                                String tekraSlug,
+                                                               String categoryName,
                                                                Category parentCategory) {
+        // СТЪПКА 1: Проверка по tekraId (ако вече е синхронизирана от Tekra)
         if (tekraId != null) {
             List<Category> byTekraId = categoryRepository.findAll().stream()
                     .filter(cat -> tekraId.equals(cat.getTekraId()))
@@ -1765,23 +1843,15 @@ public class SyncService {
 
             if (!byTekraId.isEmpty()) {
                 for (Category cat : byTekraId) {
-                    boolean parentMatches = false;
-
-                    if (parentCategory == null && cat.getParent() == null) {
-                        parentMatches = true;
-                    } else if (parentCategory != null && cat.getParent() != null &&
-                            parentCategory.getId().equals(cat.getParent().getId())) {
-                        parentMatches = true;
-                    }
-
-                    if (parentMatches) {
+                    if (parentMatches(cat, parentCategory)) {
+                        log.debug("Found existing Tekra category by tekraId: {}", tekraId);
                         return Optional.of(cat);
                     }
                 }
-                return Optional.empty();
             }
         }
 
+        // СТЪПКА 2: Проверка по tekraSlug
         if (tekraSlug != null) {
             List<Category> byTekraSlug = categoryRepository.findAll().stream()
                     .filter(cat -> tekraSlug.equals(cat.getTekraSlug()))
@@ -1789,24 +1859,62 @@ public class SyncService {
 
             if (!byTekraSlug.isEmpty()) {
                 for (Category cat : byTekraSlug) {
-                    boolean parentMatches = false;
-
-                    if (parentCategory == null && cat.getParent() == null) {
-                        parentMatches = true;
-                    } else if (parentCategory != null && cat.getParent() != null &&
-                            parentCategory.getId().equals(cat.getParent().getId())) {
-                        parentMatches = true;
-                    }
-
-                    if (parentMatches) {
+                    if (parentMatches(cat, parentCategory)) {
+                        log.debug("Found existing Tekra category by tekraSlug: {}", tekraSlug);
                         return Optional.of(cat);
                     }
                 }
-                return Optional.empty();
+            }
+        }
+
+        // ✅ СТЪПКА 3: Проверка по име (за категории от Vali, които имат същото име)
+        if (categoryName != null && !categoryName.trim().isEmpty()) {
+            String normalizedName = normalizeCategoryName(categoryName);
+
+            List<Category> allCategories = categoryRepository.findAll();
+
+            for (Category cat : allCategories) {
+                // Проверяваме нормализирано име (без регистър, специални символи)
+                String catNameBg = normalizeCategoryName(cat.getNameBg());
+                String catNameEn = normalizeCategoryName(cat.getNameEn());
+
+                if (normalizedName.equals(catNameBg) || normalizedName.equals(catNameEn)) {
+                    // Проверка дали parent съвпада
+                    if (parentMatches(cat, parentCategory)) {
+                        log.info("✓ Found existing Vali category by name: '{}' (ID: {}, will REUSE instead of creating new)",
+                                cat.getNameBg(), cat.getId());
+                        return Optional.of(cat);
+                    }
+                }
             }
         }
 
         return Optional.empty();
+    }
+
+    /**
+     * Проверка дали parent категориите съвпадат
+     */
+    private boolean parentMatches(Category category, Category expectedParent) {
+        if (expectedParent == null && category.getParent() == null) {
+            return true;
+        }
+        if (expectedParent != null && category.getParent() != null) {
+            return expectedParent.getId().equals(category.getParent().getId());
+        }
+        return false;
+    }
+
+    /**
+     * Нормализация на име за сравнение (премахва специални символи, lowercase)
+     */
+    private String normalizeCategoryName(String name) {
+        if (name == null) return "";
+
+        return name.toLowerCase()
+                .trim()
+                .replaceAll("[^a-zа-я0-9]+", "")  // Премахва всичко освен букви и цифри
+                .replaceAll("\\s+", "");
     }
 
     // ============ VALIDATION & UTILITY ============
@@ -2667,6 +2775,58 @@ public class SyncService {
             this.updated = updated;
             this.errors = errors;
         }
+    }
+
+    /**
+     * ✅ ПОДОБРЕНИЕ: Статистика за преизползване след синхронизация
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> getDuplicationStats() {
+        Map<String, Object> stats = new HashMap<>();
+
+        // Категории с двоен източник (и Vali и Tekra)
+        long categoriesWithBothSources = categoryRepository.findAll().stream()
+                .filter(cat -> cat.getExternalId() != null && cat.getTekraId() != null)
+                .count();
+
+        // Категории само от Vali
+        long valiOnlyCategories = categoryRepository.findAll().stream()
+                .filter(cat -> cat.getExternalId() != null && cat.getTekraId() == null)
+                .count();
+
+        // Категории само от Tekra
+        long tekraOnlyCategories = categoryRepository.findAll().stream()
+                .filter(cat -> cat.getTekraId() != null && cat.getExternalId() == null)
+                .count();
+
+        stats.put("categoriesReused", categoriesWithBothSources);
+        stats.put("categoriesValiOnly", valiOnlyCategories);
+        stats.put("categoriesTekraOnly", tekraOnlyCategories);
+        stats.put("totalCategories", categoryRepository.count());
+
+        // Производители
+        stats.put("totalManufacturers", manufacturerRepository.count());
+        stats.put("manufacturersFromVali", manufacturerRepository.findAll().stream()
+                .filter(m -> m.getExternalId() != null).count());
+        stats.put("manufacturersFromTekra", manufacturerRepository.findAll().stream()
+                .filter(m -> m.getExternalId() == null).count());
+
+        // Параметри
+        long parametersWithBothSources = parameterRepository.findAll().stream()
+                .filter(p -> p.getExternalId() != null && p.getTekraKey() != null)
+                .count();
+
+        stats.put("parametersReused", parametersWithBothSources);
+        stats.put("totalParameters", parameterRepository.count());
+
+        // Продукти
+        stats.put("totalProducts", productRepository.count());
+        stats.put("productsFromVali", productRepository.findAll().stream()
+                .filter(p -> p.getExternalId() != null).count());
+        stats.put("productsFromTekra", productRepository.findAll().stream()
+                .filter(p -> p.getExternalId() == null && p.getSku() != null).count());
+
+        return stats;
     }
 
 //    @Transactional

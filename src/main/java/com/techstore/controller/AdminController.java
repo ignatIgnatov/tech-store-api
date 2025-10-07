@@ -71,9 +71,9 @@ public class AdminController {
         }
     }
 
-    @GetMapping("/sync/duplicates")
-    public ResponseEntity<Map<String, Object>> getDuplicatesStats() {
-        Map<String, Object> response = syncService.getDuplicationStats();
-        return ResponseEntity.ok(response);
-    }
+//    @GetMapping("/sync/duplicates")
+//    public ResponseEntity<Map<String, Object>> getDuplicatesStats() {
+//        Map<String, Object> response = syncService.getDuplicationStats();
+//        return ResponseEntity.ok(response);
+//    }
 }

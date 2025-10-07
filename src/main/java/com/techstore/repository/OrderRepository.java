@@ -9,34 +9,74 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
 @Repository
 public interface OrderRepository extends JpaRepository<Order, Long> {
 
+    /**
+     * Намира поръчка по номер
+     */
     Optional<Order> findByOrderNumber(String orderNumber);
 
-    List<Order> findByUserIdOrderByCreatedAtDesc(Long userId);
-
+    /**
+     * Намира всички поръчки на потребител
+     */
     Page<Order> findByUserIdOrderByCreatedAtDesc(Long userId, Pageable pageable);
 
-    Page<Order> findByStatusOrderByCreatedAtDesc(OrderStatus status, Pageable pageable);
+    /**
+     * Брой поръчки на потребител
+     */
+    long countByUserId(Long userId);
 
-    @Query("SELECT o FROM Order o WHERE o.createdAt BETWEEN :startDate AND :endDate ORDER BY o.createdAt DESC")
-    List<Order> findOrdersByDateRange(@Param("startDate") LocalDateTime startDate,
-                                      @Param("endDate") LocalDateTime endDate);
+    /**
+     * Намира поръчки по статус
+     */
+    List<Order> findByStatus(OrderStatus status);
 
-    @Query("SELECT o FROM Order o WHERE YEAR(o.createdAt) = :year AND MONTH(o.createdAt) = :month")
+    /**
+     * Намира поръчки по email на клиента
+     */
+    List<Order> findByCustomerEmail(String email);
+
+    /**
+     * Проверява дали има поръчки за продукт
+     */
+    @Query("SELECT CASE WHEN COUNT(oi) > 0 THEN true ELSE false END " +
+            "FROM OrderItem oi WHERE oi.product.id = :productId")
+    boolean existsOrderWithProduct(@Param("productId") Long productId);
+
+    /**
+     * Намира поръчки за определен месец и година (за NAP генериране)
+     */
+    @Query("SELECT o FROM Order o " +
+            "WHERE YEAR(o.createdAt) = :year " +
+            "AND MONTH(o.createdAt) = :month " +
+            "ORDER BY o.createdAt ASC")
     List<Order> findOrdersByYearAndMonth(@Param("year") int year, @Param("month") int month);
 
-    @Query("SELECT COUNT(o) FROM Order o WHERE o.userId = :userId")
-    long countByUserId(@Param("userId") Long userId);
+    /**
+     * Намира поръчки в период
+     */
+    @Query("SELECT o FROM Order o " +
+            "WHERE o.createdAt BETWEEN :startDate AND :endDate " +
+            "ORDER BY o.createdAt DESC")
+    List<Order> findOrdersInDateRange(
+            @Param("startDate") java.time.LocalDateTime startDate,
+            @Param("endDate") java.time.LocalDateTime endDate
+    );
 
-    @Query("SELECT COALESCE(SUM(o.total), 0) FROM Order o WHERE o.status IN :statuses AND o.createdAt BETWEEN :startDate AND :endDate")
-    BigDecimal getTotalRevenue(@Param("statuses") List<OrderStatus> statuses,
-                               @Param("startDate") LocalDateTime startDate,
-                               @Param("endDate") LocalDateTime endDate);
+    /**
+     * Статистика за поръчки по статус
+     */
+    @Query("SELECT o.status, COUNT(o) FROM Order o GROUP BY o.status")
+    List<Object[]> getOrderStatsByStatus();
+
+    /**
+     * Общ приход от завършени поръчки
+     */
+    @Query("SELECT SUM(o.total) FROM Order o " +
+            "WHERE o.status = 'DELIVERED' AND o.paymentStatus = 'PAID'")
+    java.math.BigDecimal getTotalRevenue();
 }

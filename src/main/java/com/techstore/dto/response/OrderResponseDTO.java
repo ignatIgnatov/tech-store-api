@@ -10,7 +10,6 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 
 @Data
@@ -22,7 +21,7 @@ public class OrderResponseDTO {
     private Long id;
     private String orderNumber;
 
-    // Customer info
+    // Customer information
     private String customerFirstName;
     private String customerLastName;
     private String customerEmail;
@@ -35,7 +34,7 @@ public class OrderResponseDTO {
     private PaymentStatus paymentStatus;
     private PaymentMethod paymentMethod;
 
-    // Prices
+    // Pricing
     private BigDecimal subtotal;
     private BigDecimal taxAmount;
     private BigDecimal shippingCost;
@@ -54,7 +53,7 @@ public class OrderResponseDTO {
     private String billingCountry;
 
     // Items
-    private List<OrderItemResponseDTO> items = new ArrayList<>();
+    private List<OrderItemResponseDTO> items;
 
     // Notes
     private String customerNotes;
@@ -72,4 +71,17 @@ public class OrderResponseDTO {
     // Timestamps
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    // Computed fields
+    public String getFullCustomerName() {
+        return customerFirstName + " " + customerLastName;
+    }
+
+    public String getFullShippingAddress() {
+        return String.format("%s, %s, %s, %s",
+                shippingAddress,
+                shippingCity,
+                shippingPostalCode != null ? shippingPostalCode : "",
+                shippingCountry);
+    }
 }

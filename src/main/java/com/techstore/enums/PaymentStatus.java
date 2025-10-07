@@ -2,8 +2,8 @@ package com.techstore.enums;
 
 public enum PaymentStatus {
     PENDING,        // Чакащо плащане
-    PAID,           // Платена
+    PAID,           // Платено
     FAILED,         // Неуспешно
-    REFUNDED,       // Възстановена
-    PARTIALLY_PAID  // Частично платена
+    REFUNDED,       // Възстановено
+    PARTIALLY_PAID  // Частично платено
 }

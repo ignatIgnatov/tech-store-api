@@ -2780,54 +2780,54 @@ public class SyncService {
     /**
      * ✅ ПОДОБРЕНИЕ: Статистика за преизползване след синхронизация
      */
-    @Transactional(readOnly = true)
-    public Map<String, Object> getDuplicationStats() {
-        Map<String, Object> stats = new HashMap<>();
-
-        // Категории с двоен източник (и Vali и Tekra)
-        long categoriesWithBothSources = categoryRepository.findAll().stream()
-                .filter(cat -> cat.getExternalId() != null && cat.getTekraId() != null)
-                .count();
-
-        // Категории само от Vali
-        long valiOnlyCategories = categoryRepository.findAll().stream()
-                .filter(cat -> cat.getExternalId() != null && cat.getTekraId() == null)
-                .count();
-
-        // Категории само от Tekra
-        long tekraOnlyCategories = categoryRepository.findAll().stream()
-                .filter(cat -> cat.getTekraId() != null && cat.getExternalId() == null)
-                .count();
-
-        stats.put("categoriesReused", categoriesWithBothSources);
-        stats.put("categoriesValiOnly", valiOnlyCategories);
-        stats.put("categoriesTekraOnly", tekraOnlyCategories);
-        stats.put("totalCategories", categoryRepository.count());
-
-        // Производители
-        stats.put("totalManufacturers", manufacturerRepository.count());
-        stats.put("manufacturersFromVali", manufacturerRepository.findAll().stream()
-                .filter(m -> m.getExternalId() != null).count());
-        stats.put("manufacturersFromTekra", manufacturerRepository.findAll().stream()
-                .filter(m -> m.getExternalId() == null).count());
-
-        // Параметри
-        long parametersWithBothSources = parameterRepository.findAll().stream()
-                .filter(p -> p.getExternalId() != null && p.getTekraKey() != null)
-                .count();
-
-        stats.put("parametersReused", parametersWithBothSources);
-        stats.put("totalParameters", parameterRepository.count());
-
-        // Продукти
-        stats.put("totalProducts", productRepository.count());
-        stats.put("productsFromVali", productRepository.findAll().stream()
-                .filter(p -> p.getExternalId() != null).count());
-        stats.put("productsFromTekra", productRepository.findAll().stream()
-                .filter(p -> p.getExternalId() == null && p.getSku() != null).count());
-
-        return stats;
-    }
+//    @Transactional(readOnly = true)
+//    public Map<String, Object> getDuplicationStats() {
+//        Map<String, Object> stats = new HashMap<>();
+//
+//        // Категории с двоен източник (и Vali и Tekra)
+//        long categoriesWithBothSources = categoryRepository.findAll().stream()
+//                .filter(cat -> cat.getExternalId() != null && cat.getTekraId() != null)
+//                .count();
+//
+//        // Категории само от Vali
+//        long valiOnlyCategories = categoryRepository.findAll().stream()
+//                .filter(cat -> cat.getExternalId() != null && cat.getTekraId() == null)
+//                .count();
+//
+//        // Категории само от Tekra
+//        long tekraOnlyCategories = categoryRepository.findAll().stream()
+//                .filter(cat -> cat.getTekraId() != null && cat.getExternalId() == null)
+//                .count();
+//
+//        stats.put("categoriesReused", categoriesWithBothSources);
+//        stats.put("categoriesValiOnly", valiOnlyCategories);
+//        stats.put("categoriesTekraOnly", tekraOnlyCategories);
+//        stats.put("totalCategories", categoryRepository.count());
+//
+//        // Производители
+//        stats.put("totalManufacturers", manufacturerRepository.count());
+//        stats.put("manufacturersFromVali", manufacturerRepository.findAll().stream()
+//                .filter(m -> m.getExternalId() != null).count());
+//        stats.put("manufacturersFromTekra", manufacturerRepository.findAll().stream()
+//                .filter(m -> m.getExternalId() == null).count());
+//
+//        // Параметри
+//        long parametersWithBothSources = parameterRepository.findAll().stream()
+//                .filter(p -> p.getExternalId() != null && p.getTekraKey() != null)
+//                .count();
+//
+//        stats.put("parametersReused", parametersWithBothSources);
+//        stats.put("totalParameters", parameterRepository.count());
+//
+//        // Продукти
+//        stats.put("totalProducts", productRepository.count());
+//        stats.put("productsFromVali", productRepository.findAll().stream()
+//                .filter(p -> p.getExternalId() != null).count());
+//        stats.put("productsFromTekra", productRepository.findAll().stream()
+//                .filter(p -> p.getExternalId() == null && p.getSku() != null).count());
+//
+//        return stats;
+//    }
 
 //    @Transactional
 //    public void syncTekraCategories() {

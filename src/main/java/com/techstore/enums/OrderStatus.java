@@ -1,7 +1,7 @@
 package com.techstore.enums;
 
 public enum OrderStatus {
-    PENDING,        // Чакаща
+    PENDING,        // Чакаща обработка
     CONFIRMED,      // Потвърдена
     PROCESSING,     // В обработка
     SHIPPED,        // Изпратена

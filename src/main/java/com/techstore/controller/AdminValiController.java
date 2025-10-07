@@ -6,24 +6,21 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
-import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Map;
-
 @Hidden
 @RestController
-@RequestMapping("/admin")
+@RequestMapping("/admin/vali/sync")
 @RequiredArgsConstructor
 @Slf4j
 @CrossOrigin(origins = "*")
-public class AdminController {
+public class AdminValiController {
 
     private final SyncService syncService;
 
-    @PostMapping("/sync/categories")
+    @PostMapping("/categories")
 //    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<String> syncCategories() {
         try {
@@ -35,7 +32,7 @@ public class AdminController {
         }
     }
 
-    @PostMapping("/sync/manufacturers")
+    @PostMapping("/manufacturers")
 //    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<String> syncManufacturers() {
         try {
@@ -47,7 +44,7 @@ public class AdminController {
         }
     }
 
-    @PostMapping("/sync/parameters")
+    @PostMapping("/parameters")
 //    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<String> syncParameters() {
         try {
@@ -59,7 +56,7 @@ public class AdminController {
         }
     }
 
-    @PostMapping("/sync/products")
+    @PostMapping("/products")
 //    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<String> syncProducts() {
         try {

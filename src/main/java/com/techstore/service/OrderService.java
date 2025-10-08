@@ -4,14 +4,20 @@ import com.techstore.dto.request.OrderCreateRequestDTO;
 import com.techstore.dto.request.OrderStatusUpdateDTO;
 import com.techstore.dto.response.OrderItemResponseDTO;
 import com.techstore.dto.response.OrderResponseDTO;
-import com.techstore.entity.*;
+import com.techstore.dto.speedy.SpeedyCalculatePriceResponse;
+import com.techstore.entity.Order;
+import com.techstore.entity.OrderItem;
+import com.techstore.entity.Product;
+import com.techstore.entity.User;
 import com.techstore.enums.OrderStatus;
 import com.techstore.enums.PaymentStatus;
 import com.techstore.enums.ShippingMethod;
 import com.techstore.exception.ResourceNotFoundException;
-import com.techstore.dto.speedy.SpeedyCalculatePriceResponse;
-import com.techstore.repository.*;
-import com.techstore.service.SpeedyService;
+import com.techstore.repository.CartItemRepository;
+import com.techstore.repository.OrderItemRepository;
+import com.techstore.repository.OrderRepository;
+import com.techstore.repository.ProductRepository;
+import com.techstore.repository.UserRepository;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -158,17 +164,30 @@ public class OrderService {
                 BigDecimal totalWeight = calculateOrderWeight(request.getItems());
 
                 // Calculate Speedy shipping price
-                SpeedyCalculatePriceResponse speedyPrice = speedyService.calculateShippingPrice(
+                SpeedyCalculatePriceResponse speedyResponse = speedyService.calculateShippingPrice(
                         request.getShippingSpeedySiteId(),
                         totalWeight,
                         1 // number of parcels
                 );
 
-                log.info("Calculated Speedy shipping cost: {} {}", speedyPrice.getTotal(), speedyPrice.getCurrency());
-                return speedyPrice.getTotal();
+                // Extract price from response
+                if (speedyResponse != null &&
+                        speedyResponse.getCalculations() != null &&
+                        !speedyResponse.getCalculations().isEmpty()) {
+
+                    SpeedyCalculatePriceResponse.Calculation calculation = speedyResponse.getCalculations().get(0);
+                    if (calculation.getPrice() != null) {
+                        BigDecimal total = calculation.getPrice().getTotal();
+                        log.info("Calculated Speedy shipping cost: {} {}", total, calculation.getPrice().getCurrency());
+                        return total;
+                    }
+                }
+
+                log.error("Invalid Speedy response structure");
+                throw new RuntimeException("Failed to extract shipping cost from Speedy response");
 
             } catch (Exception e) {
-                log.error("Failed to calculate Speedy shipping cost: {}", e.getMessage());
+                log.error("Failed to calculate Speedy shipping cost: {}", e.getMessage(), e);
                 throw new RuntimeException("Failed to calculate shipping cost: " + e.getMessage());
             }
         } else if (request.getShippingMethod() == ShippingMethod.FREE) {
@@ -200,20 +219,35 @@ public class OrderService {
         return totalWeight;
     }
 
+
     /**
      * Calculate shipping cost for order preview
      */
     public BigDecimal calculateShippingCostPreview(Long speedySiteId, List<OrderCreateRequestDTO.OrderItemRequestDTO> items) {
         try {
             BigDecimal totalWeight = calculateOrderWeight(items);
-            SpeedyCalculatePriceResponse speedyPrice = speedyService.calculateShippingPrice(
+            SpeedyCalculatePriceResponse speedyResponse = speedyService.calculateShippingPrice(
                     speedySiteId,
                     totalWeight,
                     1
             );
-            return speedyPrice.getTotal();
+
+            // Extract price from response
+            if (speedyResponse != null &&
+                    speedyResponse.getCalculations() != null &&
+                    !speedyResponse.getCalculations().isEmpty()) {
+
+                SpeedyCalculatePriceResponse.Calculation calculation = speedyResponse.getCalculations().get(0);
+                if (calculation.getPrice() != null) {
+                    return calculation.getPrice().getTotal();
+                }
+            }
+
+            log.error("Invalid Speedy response structure");
+            throw new RuntimeException("Failed to extract shipping cost from Speedy response");
+
         } catch (Exception e) {
-            log.error("Failed to calculate shipping cost preview: {}", e.getMessage());
+            log.error("Failed to calculate shipping cost preview: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to calculate shipping cost: " + e.getMessage());
         }
     }

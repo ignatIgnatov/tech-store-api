@@ -16,7 +16,6 @@ public class OrderCreateRequestDTO {
     @Valid
     private List<OrderItemRequestDTO> items;
 
-    // Customer information
     @NotBlank(message = "First name is required")
     @Size(max = 100)
     private String customerFirstName;
@@ -42,7 +41,6 @@ public class OrderCreateRequestDTO {
 
     private Boolean customerVatRegistered = false;
 
-    // Shipping address
     @NotBlank(message = "Shipping address is required")
     private String shippingAddress;
 
@@ -57,7 +55,6 @@ public class OrderCreateRequestDTO {
     @Size(max = 100)
     private String shippingCountry = "Bulgaria";
 
-    // Billing address (optional - can be same as shipping)
     private Boolean useSameAddressForBilling = true;
 
     private String billingAddress;
@@ -71,7 +68,6 @@ public class OrderCreateRequestDTO {
     @Size(max = 100)
     private String billingCountry = "Bulgaria";
 
-    // Payment
     @NotNull(message = "Payment method is required")
     private PaymentMethod paymentMethod;
 
@@ -79,7 +75,6 @@ public class OrderCreateRequestDTO {
     @DecimalMin(value = "0.0", message = "Shipping cost must be positive")
     private BigDecimal shippingCost = BigDecimal.ZERO;
 
-    // Notes
     @Size(max = 1000)
     private String customerNotes;
 

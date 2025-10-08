@@ -1,28 +1,28 @@
 package com.techstore.service;
 
 import com.techstore.config.SpeedyConfig;
-import com.techstore.dto.speedy.SpeedyAuthenticationRequest;
-import com.techstore.dto.speedy.SpeedyAuthenticationResponse;
 import com.techstore.dto.speedy.SpeedyCalculatePriceRequest;
 import com.techstore.dto.speedy.SpeedyCalculatePriceResponse;
 import com.techstore.dto.speedy.SpeedyOffice;
+import com.techstore.dto.speedy.SpeedyOfficeResponse;
 import com.techstore.dto.speedy.SpeedySite;
+import com.techstore.dto.speedy.SpeedySiteResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
-import org.springframework.web.util.UriComponentsBuilder;
 
 import java.math.BigDecimal;
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -32,70 +32,50 @@ public class SpeedyService {
     private final RestTemplate restTemplate;
     private final SpeedyConfig speedyConfig;
 
-    private String authToken;
-
-    /**
-     * Аутентикира се с Speedy API
-     */
-    public void authenticate() {
-        try {
-            SpeedyAuthenticationRequest authRequest = new SpeedyAuthenticationRequest();
-            authRequest.setUserName(speedyConfig.getUserName());
-            authRequest.setPassword(speedyConfig.getPassword());
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-
-            HttpEntity<SpeedyAuthenticationRequest> request = new HttpEntity<>(authRequest, headers);
-
-            ResponseEntity<SpeedyAuthenticationResponse> response = restTemplate.postForEntity(
-                    speedyConfig.getBaseUrl() + "/identity/token",
-                    request,
-                    SpeedyAuthenticationResponse.class
-            );
-
-            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
-                authToken = response.getBody().getAccessToken();
-                log.info("Successfully authenticated with Speedy API");
-            } else {
-                log.error("Failed to authenticate with Speedy API: {}", response.getStatusCode());
-                throw new RuntimeException("Speedy authentication failed");
-            }
-        } catch (Exception e) {
-            log.error("Error during Speedy authentication: {}", e.getMessage());
-            throw new RuntimeException("Failed to authenticate with Speedy API", e);
-        }
-    }
+    // NOTE: Speedy API does NOT use token-based authentication
+    // Username and password are sent with EVERY request
 
     /**
      * Взема населени места по име
      */
     public List<SpeedySite> getCitiesByName(String name) {
-        ensureAuthenticated();
-
         try {
-            HttpHeaders headers = createAuthHeaders();
-            HttpEntity<Void> request = new HttpEntity<>(headers);
+            // Create request body with authentication
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("userName", speedyConfig.getUserName());
+            requestBody.put("password", speedyConfig.getPassword());
+            requestBody.put("name", name);
+            requestBody.put("countryId", 100); // България
 
-            String url = UriComponentsBuilder.fromHttpUrl(speedyConfig.getBaseUrl() + "/location/site")
-                    .queryParam("name", name)
-                    .queryParam("countryId", 100) // България
-                    .toUriString();
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
 
-            ResponseEntity<SpeedySite[]> response = restTemplate.exchange(
+            HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
+
+            String url = speedyConfig.getBaseUrl() + "location/site";
+
+            log.info("Fetching cities from Speedy API with name: {}", name);
+
+            // FIXED: Use SpeedySiteResponse wrapper instead of SpeedySite[]
+            ResponseEntity<SpeedySiteResponse> response = restTemplate.postForEntity(
                     url,
-                    HttpMethod.GET,
                     request,
-                    SpeedySite[].class
+                    SpeedySiteResponse.class
             );
 
             if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
-                return Arrays.asList(response.getBody());
+                SpeedySiteResponse responseBody = response.getBody();
+
+                if (responseBody.getSites() != null) {
+                    log.info("Successfully fetched {} cities from Speedy API", responseBody.getSites().size());
+                    return responseBody.getSites();
+                }
             }
 
+            log.warn("Received empty response from Speedy API");
             return Collections.emptyList();
         } catch (Exception e) {
-            log.error("Error fetching sites from Speedy API: {}", e.getMessage());
+            log.error("Error fetching sites from Speedy API: {}", e.getMessage(), e);
             return Collections.emptyList();
         }
     }
@@ -104,28 +84,42 @@ public class SpeedyService {
      * Взема офиси в дадено населено място
      */
     public List<SpeedyOffice> getOfficesByCityId(Long siteId) {
-        ensureAuthenticated();
-
         try {
-            HttpHeaders headers = createAuthHeaders();
-            HttpEntity<Void> request = new HttpEntity<>(headers);
+            // Create request body with authentication
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("userName", speedyConfig.getUserName());
+            requestBody.put("password", speedyConfig.getPassword());
+            requestBody.put("siteId", siteId);
 
-            String url = speedyConfig.getBaseUrl() + "/location/office/" + siteId;
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
 
-            ResponseEntity<SpeedyOffice[]> response = restTemplate.exchange(
+            HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
+
+            String url = speedyConfig.getBaseUrl() + "location/office";
+
+            log.info("Fetching offices from Speedy API for siteId: {}", siteId);
+
+            // FIXED: Use SpeedyOfficeResponse wrapper instead of SpeedyOffice[]
+            ResponseEntity<SpeedyOfficeResponse> response = restTemplate.postForEntity(
                     url,
-                    HttpMethod.GET,
                     request,
-                    SpeedyOffice[].class
+                    SpeedyOfficeResponse.class
             );
 
             if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
-                return Arrays.asList(response.getBody());
+                SpeedyOfficeResponse responseBody = response.getBody();
+
+                if (responseBody.getOffices() != null) {
+                    log.info("Successfully fetched {} offices from Speedy API", responseBody.getOffices().size());
+                    return responseBody.getOffices();
+                }
             }
 
+            log.warn("Received empty response from Speedy API");
             return Collections.emptyList();
         } catch (Exception e) {
-            log.error("Error fetching offices from Speedy API: {}", e.getMessage());
+            log.error("Error fetching offices from Speedy API: {}", e.getMessage(), e);
             return Collections.emptyList();
         }
     }
@@ -134,10 +128,14 @@ public class SpeedyService {
      * Изчислява цена на доставка
      */
     public SpeedyCalculatePriceResponse calculateShippingPrice(Long receiverSiteId, BigDecimal totalWeight, Integer parcelCount) {
-        ensureAuthenticated();
-
         try {
             SpeedyCalculatePriceRequest priceRequest = new SpeedyCalculatePriceRequest();
+
+            // Add authentication to the request
+            priceRequest.setUserName(speedyConfig.getUserName());
+            priceRequest.setPassword(speedyConfig.getPassword());
+            priceRequest.setLanguage("BG");
+
             priceRequest.setSenderSiteId(speedyConfig.getSenderSiteId());
             priceRequest.setReceiverSiteId(receiverSiteId);
             priceRequest.setSaturdayDelivery(speedyConfig.getSaturdayDelivery());
@@ -159,49 +157,36 @@ public class SpeedyService {
             priceRequest.setContent(content);
 
             // Конфигуриране на плащача
-            SpeedyCalculatePriceRequest.Payer payer = new SpeedyCalculatePriceRequest.Payer();
-            payer.setType("SENDER"); // или "RECIPIENT"
-            priceRequest.setPayer(payer);
+            SpeedyCalculatePriceRequest.Payment payment = new SpeedyCalculatePriceRequest.Payment();
+            payment.setCourierServicePayer("SENDER");
+            priceRequest.setPayment(payment);
 
-            HttpHeaders headers = createAuthHeaders();
+            HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
 
             HttpEntity<SpeedyCalculatePriceRequest> request = new HttpEntity<>(priceRequest, headers);
 
+            String url = speedyConfig.getBaseUrl() + "calculate";
+
+            log.info("Calculating shipping price for receiverSiteId: {}, weight: {}, parcels: {}",
+                    receiverSiteId, totalWeight, parcelCount);
+
             ResponseEntity<SpeedyCalculatePriceResponse> response = restTemplate.postForEntity(
-                    speedyConfig.getBaseUrl() + "/calculator/price",
+                    url,
                     request,
                     SpeedyCalculatePriceResponse.class
             );
 
             if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
+                log.info("Successfully calculated shipping price");
                 return response.getBody();
             } else {
                 log.error("Failed to calculate shipping price: {}", response.getStatusCode());
                 throw new RuntimeException("Failed to calculate shipping price");
             }
         } catch (Exception e) {
-            log.error("Error calculating shipping price: {}", e.getMessage());
+            log.error("Error calculating shipping price: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to calculate shipping price", e);
         }
-    }
-
-    /**
-     * Проверява дали има валиден токен и аутентикира се ако е необходимо
-     */
-    private void ensureAuthenticated() {
-        if (authToken == null) {
-            authenticate();
-        }
-    }
-
-    /**
-     * Създава headers с авторизация
-     */
-    private HttpHeaders createAuthHeaders() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(authToken);
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        return headers;
     }
 }

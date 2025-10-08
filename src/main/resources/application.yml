@@ -232,3 +232,11 @@ vali:
 excluded:
     categories:
         external-ids: ${VALI_EXCLUDED_CATEGORIES_IDS}
+
+speedy:
+    base-url: https://api.speedy.bg/v1/
+    user-name: ${SPEEDY_USERNAME:1907702}
+    password: ${SPEEDY_PASSWORD:9382888519}
+    sender-site-id: ${SPEEDY_SENDER_ID:10147}
+    default-service-id: ${SPEEDY_DEFAULT_SERVICE_ID:505}
+    saturday-delivery: false

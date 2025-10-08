@@ -7,8 +7,12 @@ import com.techstore.dto.response.OrderResponseDTO;
 import com.techstore.entity.*;
 import com.techstore.enums.OrderStatus;
 import com.techstore.enums.PaymentStatus;
+import com.techstore.enums.ShippingMethod;
 import com.techstore.exception.ResourceNotFoundException;
+import com.techstore.dto.speedy.SpeedyCalculatePriceResponse;
 import com.techstore.repository.*;
+import com.techstore.service.SpeedyService;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -32,27 +36,32 @@ public class OrderService {
     private final ProductRepository productRepository;
     private final UserRepository userRepository;
     private final CartItemRepository cartItemRepository;
+    private final SpeedyService speedyService;
 
     /**
-     * Създава нова поръчка
+     * Creates a new order
      */
     @Transactional
     public OrderResponseDTO createOrder(OrderCreateRequestDTO request, Long userId) {
         log.info("Creating order for user: {}", userId);
 
-        // Намираме потребителя
+        // Find user
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
-        // Създаваме поръчката
+        // Calculate shipping cost if Speedy is selected
+        BigDecimal shippingCost = calculateShippingCost(request);
+
+        // Create order
         Order order = new Order();
         order.setUser(user);
         order.setOrderNumber(generateOrderNumber());
         order.setStatus(OrderStatus.PENDING);
         order.setPaymentStatus(PaymentStatus.PENDING);
         order.setPaymentMethod(request.getPaymentMethod());
+        order.setShippingMethod(request.getShippingMethod());
 
-        // Задаваме информация за клиента
+        // Set customer information
         order.setCustomerFirstName(request.getCustomerFirstName());
         order.setCustomerLastName(request.getCustomerLastName());
         order.setCustomerEmail(request.getCustomerEmail());
@@ -61,13 +70,21 @@ public class OrderService {
         order.setCustomerVatNumber(request.getCustomerVatNumber());
         order.setCustomerVatRegistered(request.getCustomerVatRegistered());
 
-        // Адрес за доставка
+        // Shipping address
         order.setShippingAddress(request.getShippingAddress());
         order.setShippingCity(request.getShippingCity());
         order.setShippingPostalCode(request.getShippingPostalCode());
         order.setShippingCountry(request.getShippingCountry());
 
-        // Адрес за фактура
+        // Speedy specific fields
+        if (request.getShippingMethod() == ShippingMethod.SPEEDY) {
+            order.setShippingSpeedySiteId(request.getShippingSpeedySiteId());
+            order.setShippingSpeedyOfficeId(request.getShippingSpeedyOfficeId());
+            order.setShippingSpeedySiteName(request.getShippingSpeedySiteName());
+            order.setShippingSpeedyOfficeName(request.getShippingSpeedyOfficeName());
+        }
+
+        // Billing address
         if (Boolean.TRUE.equals(request.getUseSameAddressForBilling())) {
             order.setBillingAddress(request.getShippingAddress());
             order.setBillingCity(request.getShippingCity());
@@ -80,11 +97,11 @@ public class OrderService {
             order.setBillingCountry(request.getBillingCountry());
         }
 
-        // Бележки
+        // Notes and shipping cost
         order.setCustomerNotes(request.getCustomerNotes());
-        order.setShippingCost(request.getShippingCost());
+        order.setShippingCost(shippingCost);
 
-        // Добавяме продуктите
+        // Add order items
         for (var itemDto : request.getItems()) {
             Product product = productRepository.findById(itemDto.getProductId())
                     .orElseThrow(() -> new ResourceNotFoundException("Product not found: " + itemDto.getProductId()));
@@ -95,20 +112,20 @@ public class OrderService {
             orderItem.setProductSku(product.getSku());
             orderItem.setProductModel(product.getModel());
             orderItem.setQuantity(itemDto.getQuantity());
-            orderItem.setUnitPrice(product.getPriceClient()); // Цена без ДДС
-            orderItem.setTaxRate(new BigDecimal("20.00")); // 20% ДДС
+            orderItem.setUnitPrice(product.getPriceClient()); // Price without VAT
+            orderItem.setTaxRate(new BigDecimal("20.00")); // 20% VAT
 
             orderItem.calculateLineTotals();
             order.addOrderItem(orderItem);
         }
 
-        // Изчисляваме общите суми
+        // Calculate totals
         order.calculateTotals();
 
-        // Запазваме
+        // Save order
         order = orderRepository.save(order);
 
-        // Изчистваме кошницата на потребителя
+        // Clear user's cart
         cartItemRepository.deleteByUserId(userId);
 
         log.info("Order created successfully: {}", order.getOrderNumber());
@@ -117,7 +134,92 @@ public class OrderService {
     }
 
     /**
-     * Взема поръчка по ID
+     * Creates order with Speedy shipping calculation
+     */
+    @Transactional
+    public OrderResponseDTO createOrderWithSpeedy(OrderCreateRequestDTO request, Long userId) {
+        log.info("Creating order with Speedy shipping for user: {}", userId);
+
+        // Validate Speedy data
+        if (request.getShippingMethod() == ShippingMethod.SPEEDY && request.getShippingSpeedySiteId() == null) {
+            throw new IllegalArgumentException("Speedy site ID is required for Speedy shipping");
+        }
+
+        return createOrder(request, userId);
+    }
+
+    /**
+     * Calculate shipping cost based on shipping method
+     */
+    private BigDecimal calculateShippingCost(OrderCreateRequestDTO request) {
+        if (request.getShippingMethod() == ShippingMethod.SPEEDY) {
+            try {
+                // Calculate order weight
+                BigDecimal totalWeight = calculateOrderWeight(request.getItems());
+
+                // Calculate Speedy shipping price
+                SpeedyCalculatePriceResponse speedyPrice = speedyService.calculateShippingPrice(
+                        request.getShippingSpeedySiteId(),
+                        totalWeight,
+                        1 // number of parcels
+                );
+
+                log.info("Calculated Speedy shipping cost: {} {}", speedyPrice.getTotal(), speedyPrice.getCurrency());
+                return speedyPrice.getTotal();
+
+            } catch (Exception e) {
+                log.error("Failed to calculate Speedy shipping cost: {}", e.getMessage());
+                throw new RuntimeException("Failed to calculate shipping cost: " + e.getMessage());
+            }
+        } else if (request.getShippingMethod() == ShippingMethod.FREE) {
+            return BigDecimal.ZERO;
+        } else {
+            // Fixed shipping cost for other methods
+            return request.getShippingCost() != null ? request.getShippingCost() : new BigDecimal("5.00");
+        }
+    }
+
+    /**
+     * Calculate total order weight
+     */
+    private BigDecimal calculateOrderWeight(List<OrderCreateRequestDTO.OrderItemRequestDTO> items) {
+        BigDecimal totalWeight = BigDecimal.ZERO;
+
+        for (var item : items) {
+            Product product = productRepository.findById(item.getProductId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
+
+            // Use product weight if available, otherwise default to 0.5kg
+            BigDecimal itemWeight = product.getWeight() != null ?
+                    product.getWeight() : new BigDecimal("0.5");
+
+            totalWeight = totalWeight.add(itemWeight.multiply(BigDecimal.valueOf(item.getQuantity())));
+        }
+
+        log.debug("Calculated order weight: {} kg", totalWeight);
+        return totalWeight;
+    }
+
+    /**
+     * Calculate shipping cost for order preview
+     */
+    public BigDecimal calculateShippingCostPreview(Long speedySiteId, List<OrderCreateRequestDTO.OrderItemRequestDTO> items) {
+        try {
+            BigDecimal totalWeight = calculateOrderWeight(items);
+            SpeedyCalculatePriceResponse speedyPrice = speedyService.calculateShippingPrice(
+                    speedySiteId,
+                    totalWeight,
+                    1
+            );
+            return speedyPrice.getTotal();
+        } catch (Exception e) {
+            log.error("Failed to calculate shipping cost preview: {}", e.getMessage());
+            throw new RuntimeException("Failed to calculate shipping cost: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Get order by ID
      */
     @Transactional(readOnly = true)
     public OrderResponseDTO getOrderById(Long orderId) {
@@ -127,7 +229,7 @@ public class OrderService {
     }
 
     /**
-     * Взема поръчка по номер
+     * Get order by order number
      */
     @Transactional(readOnly = true)
     public OrderResponseDTO getOrderByNumber(String orderNumber) {
@@ -137,7 +239,7 @@ public class OrderService {
     }
 
     /**
-     * Взема поръчките на потребител
+     * Get user's orders
      */
     @Transactional(readOnly = true)
     public Page<OrderResponseDTO> getUserOrders(Long userId, Pageable pageable) {
@@ -146,7 +248,7 @@ public class OrderService {
     }
 
     /**
-     * Взема всички поръчки (админ)
+     * Get all orders (admin)
      */
     @Transactional(readOnly = true)
     public Page<OrderResponseDTO> getAllOrders(Pageable pageable) {
@@ -155,13 +257,23 @@ public class OrderService {
     }
 
     /**
-     * Променя статуса на поръчка
+     * Get orders by status
+     */
+    @Transactional(readOnly = true)
+    public Page<OrderResponseDTO> getOrdersByStatus(OrderStatus status, Pageable pageable) {
+        Page<Order> orders = orderRepository.findByStatusOrderByCreatedAtDesc(status, pageable);
+        return orders.map(this::mapToResponseDTO);
+    }
+
+    /**
+     * Update order status
      */
     @Transactional
     public OrderResponseDTO updateOrderStatus(Long orderId, OrderStatusUpdateDTO request) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
 
+        OrderStatus previousStatus = order.getStatus();
         order.setStatus(request.getStatus());
 
         if (request.getAdminNotes() != null) {
@@ -172,24 +284,42 @@ public class OrderService {
             order.setTrackingNumber(request.getTrackingNumber());
         }
 
-        // Автоматично задаване на дати
+        // Automatic date setting
         if (request.getStatus() == OrderStatus.SHIPPED && order.getShippedAt() == null) {
             order.setShippedAt(LocalDateTime.now());
         }
 
         if (request.getStatus() == OrderStatus.DELIVERED && order.getDeliveredAt() == null) {
             order.setDeliveredAt(LocalDateTime.now());
+            order.setPaymentStatus(PaymentStatus.PAID); // Auto-mark as paid when delivered
         }
 
         order = orderRepository.save(order);
 
-        log.info("Order {} status updated to {}", order.getOrderNumber(), request.getStatus());
+        log.info("Order {} status updated from {} to {}",
+                order.getOrderNumber(), previousStatus, request.getStatus());
 
         return mapToResponseDTO(order);
     }
 
     /**
-     * Отказва поръчка
+     * Update payment status
+     */
+    @Transactional
+    public OrderResponseDTO updatePaymentStatus(Long orderId, PaymentStatus paymentStatus) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
+
+        order.setPaymentStatus(paymentStatus);
+        order = orderRepository.save(order);
+
+        log.info("Order {} payment status updated to {}", order.getOrderNumber(), paymentStatus);
+
+        return mapToResponseDTO(order);
+    }
+
+    /**
+     * Cancel order
      */
     @Transactional
     public OrderResponseDTO cancelOrder(Long orderId, String reason) {
@@ -200,18 +330,24 @@ public class OrderService {
             throw new IllegalStateException("Cannot cancel delivered order");
         }
 
+        if (order.getStatus() == OrderStatus.SHIPPED) {
+            throw new IllegalStateException("Cannot cancel shipped order. Please contact customer service.");
+        }
+
         order.setStatus(OrderStatus.CANCELLED);
-        order.setAdminNotes(order.getAdminNotes() + "\nCancellation reason: " + reason);
+        String cancellationNote = "Cancellation reason: " + reason + " (at: " + LocalDateTime.now() + ")";
+        order.setAdminNotes(order.getAdminNotes() != null ?
+                order.getAdminNotes() + "\n" + cancellationNote : cancellationNote);
 
         order = orderRepository.save(order);
 
-        log.info("Order {} cancelled", order.getOrderNumber());
+        log.info("Order {} cancelled. Reason: {}", order.getOrderNumber(), reason);
 
         return mapToResponseDTO(order);
     }
 
     /**
-     * Взема поръчки за определен месец (за NAP файл)
+     * Get orders for specific month (for NAP file)
      */
     @Transactional(readOnly = true)
     public List<Order> getOrdersForMonth(int year, int month) {
@@ -219,7 +355,23 @@ public class OrderService {
     }
 
     /**
-     * Генерира уникален номер на поръчка
+     * Get order statistics
+     */
+    @Transactional(readOnly = true)
+    public OrderStatistics getOrderStatistics() {
+        OrderStatistics stats = new OrderStatistics();
+        stats.setTotalOrders(orderRepository.count());
+        stats.setPendingOrders(orderRepository.countByStatus(OrderStatus.PENDING));
+        stats.setShippedOrders(orderRepository.countByStatus(OrderStatus.SHIPPED));
+        stats.setDeliveredOrders(orderRepository.countByStatus(OrderStatus.DELIVERED));
+        stats.setCancelledOrders(orderRepository.countByStatus(OrderStatus.CANCELLED));
+        stats.setTotalRevenue(orderRepository.sumTotalAmount());
+
+        return stats;
+    }
+
+    /**
+     * Generate unique order number
      */
     private String generateOrderNumber() {
         String year = String.valueOf(Year.now().getValue());
@@ -228,7 +380,7 @@ public class OrderService {
     }
 
     /**
-     * Маппа Order към OrderResponseDTO
+     * Map Order to OrderResponseDTO
      */
     private OrderResponseDTO mapToResponseDTO(Order order) {
         List<OrderItemResponseDTO> items = order.getOrderItems().stream()
@@ -247,6 +399,7 @@ public class OrderService {
                 .status(order.getStatus())
                 .paymentStatus(order.getPaymentStatus())
                 .paymentMethod(order.getPaymentMethod())
+                .shippingMethod(order.getShippingMethod())
                 .subtotal(order.getSubtotal())
                 .taxAmount(order.getTaxAmount())
                 .shippingCost(order.getShippingCost())
@@ -260,6 +413,10 @@ public class OrderService {
                 .billingCity(order.getBillingCity())
                 .billingPostalCode(order.getBillingPostalCode())
                 .billingCountry(order.getBillingCountry())
+                .shippingSpeedySiteId(order.getShippingSpeedySiteId())
+                .shippingSpeedyOfficeId(order.getShippingSpeedyOfficeId())
+                .shippingSpeedySiteName(order.getShippingSpeedySiteName())
+                .shippingSpeedyOfficeName(order.getShippingSpeedyOfficeName())
                 .items(items)
                 .customerNotes(order.getCustomerNotes())
                 .adminNotes(order.getAdminNotes())
@@ -288,5 +445,18 @@ public class OrderService {
                 .lineTax(item.getLineTax())
                 .discountAmount(item.getDiscountAmount())
                 .build();
+    }
+
+    /**
+     * Inner class for order statistics
+     */
+    @Data
+    public static class OrderStatistics {
+        private Long totalOrders;
+        private Long pendingOrders;
+        private Long shippedOrders;
+        private Long deliveredOrders;
+        private Long cancelledOrders;
+        private BigDecimal totalRevenue;
     }
 }

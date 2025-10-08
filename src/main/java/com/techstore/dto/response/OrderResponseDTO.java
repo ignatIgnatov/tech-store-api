@@ -3,6 +3,7 @@ package com.techstore.dto.response;
 import com.techstore.enums.OrderStatus;
 import com.techstore.enums.PaymentMethod;
 import com.techstore.enums.PaymentStatus;
+import com.techstore.enums.ShippingMethod;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -71,6 +72,12 @@ public class OrderResponseDTO {
     // Timestamps
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    private ShippingMethod shippingMethod;
+    private Long shippingSpeedySiteId;
+    private Long shippingSpeedyOfficeId;
+    private String shippingSpeedySiteName;
+    private String shippingSpeedyOfficeName;
 
     // Computed fields
     public String getFullCustomerName() {

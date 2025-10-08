@@ -1,6 +1,7 @@
 package com.techstore.dto.request;
 
 import com.techstore.enums.PaymentMethod;
+import com.techstore.enums.ShippingMethod;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import lombok.Data;
@@ -93,4 +94,10 @@ public class OrderCreateRequestDTO {
         @Max(value = 999, message = "Quantity cannot exceed 999")
         private Integer quantity;
     }
+
+    private ShippingMethod shippingMethod;
+    private Long shippingSpeedySiteId;
+    private Long shippingSpeedyOfficeId;
+    private String shippingSpeedySiteName;
+    private String shippingSpeedyOfficeName;
 }

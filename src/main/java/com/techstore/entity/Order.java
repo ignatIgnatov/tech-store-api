@@ -3,6 +3,7 @@ package com.techstore.entity;
 import com.techstore.enums.OrderStatus;
 import com.techstore.enums.PaymentMethod;
 import com.techstore.enums.PaymentStatus;
+import com.techstore.enums.ShippingMethod;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -131,6 +132,15 @@ public class Order extends BaseEntity {
     // Продукти в поръчката
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<OrderItem> orderItems = new ArrayList<>();
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "shipping_method")
+    private ShippingMethod shippingMethod;
+
+    private Long shippingSpeedySiteId;
+    private Long shippingSpeedyOfficeId;
+    private String shippingSpeedySiteName;
+    private String shippingSpeedyOfficeName;
 
     // Helper методи
     public void calculateTotals() {

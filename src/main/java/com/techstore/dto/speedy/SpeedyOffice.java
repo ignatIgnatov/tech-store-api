@@ -1,53 +1,93 @@
 package com.techstore.dto.speedy;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
+
 import java.util.List;
 
 @Data
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class SpeedyOffice {
     private Long id;
     private String name;
     private String nameEn;
     private Long siteId;
     private Address address;
-    private WorkingTimeSchedule workingTimeSchedule;
-    private List<String> workingTimeHalfDay;
-    private Double maxParcelDimensions;
+
+    private String workingTimeFrom;
+    private String workingTimeTo;
+    private String workingTimeHalfFrom;
+    private String workingTimeHalfTo;
+    private String workingTimeDayOffFrom;
+    private String workingTimeDayOffTo;
+
+    // Cutoff times
+    private String sameDayDepartureCutoff;
+    private String sameDayDepartureCutoffHalf;
+    private String sameDayDepartureCutoffDayOff;
+
+    // Parcel dimensions and weight
+    private MaxParcelDimensions maxParcelDimensions;
     private Double maxParcelWeight;
-    private String type;
-    private Integer nearbyOfficeId;
-    private List<String> palletOffice;
-    private List<String> cardPaymentsAllowed;
-    private List<String> cashPaymentsAllowed;
+
+    private String type; // "OFFICE" or "APT"
+    private Long nearbyOfficeId;
+
+    // Working time schedule
+    private List<WorkingTimeScheduleItem> workingTimeSchedule;
+
+    // Payment options
+    private Boolean cardPaymentsAllowed;
+    private Boolean cashPaymentsAllowed;
+
+    // Pallet and cargo options
+    private Boolean palletOffice;
+    private Boolean cargoTypePallet;
+    private Boolean cargoTypeParcel;
+    private Boolean cargoTypeTyre;
 
     @Data
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Address {
         private Long countryId;
         private Long siteId;
+        private String siteType;
+        private String siteName;
         private String postCode;
+        private Long streetId;
+        private String streetType;
         private String streetName;
         private String streetNo;
+        private String complexId;
+        private String complexType;
         private String complexName;
+        private String blockNo;
+        private String entranceNo;
+        private String floorNo;
+        private String apartmentNo;
         private String addressNote;
-        private Double x;
-        private Double y;
+        private Double x; // longitude
+        private Double y; // latitude
         private String fullAddressString;
+        private String siteAddressString;
+        private String localAddressString;
     }
 
     @Data
-    public static class WorkingTimeSchedule {
-        private DaySchedule monday;
-        private DaySchedule tuesday;
-        private DaySchedule wednesday;
-        private DaySchedule thursday;
-        private DaySchedule friday;
-        private DaySchedule saturday;
-        private DaySchedule sunday;
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class MaxParcelDimensions {
+        private Integer width;
+        private Integer height;
+        private Integer depth;
     }
 
     @Data
-    public static class DaySchedule {
-        private String from;
-        private String to;
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class WorkingTimeScheduleItem {
+        private String date; // "2025-10-09"
+        private String workingTimeFrom;
+        private String workingTimeTo;
+        private String sameDayDepartureCutoff;
+        private Boolean standardSchedule;
     }
 }

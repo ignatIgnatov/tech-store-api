@@ -1,5 +1,7 @@
 package com.techstore.service;
 
+import com.techstore.service.sync.TekraSyncService;
+import com.techstore.service.sync.ValiSyncService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,7 +21,8 @@ public class CronJobService {
     @Value("${app.sync.tekra.enabled:true}")
     private boolean tekraSyncEnabled;
 
-    private final SyncService syncService;
+    private final ValiSyncService valiSyncService;
+    private final TekraSyncService tekraSyncService;
 
     @Scheduled(cron = "${app.sync.cron}")
     public void syncVali() {
@@ -30,16 +33,16 @@ public class CronJobService {
 
         log.info("Starting scheduled Vali synchronization at {}", LocalDateTime.now());
         try {
-            syncService.syncCategories();
+            valiSyncService.syncCategories();
             log.info("Scheduled category synchronization completed at {}", LocalDateTime.now());
 
-            syncService.syncManufacturers();
+            valiSyncService.syncManufacturers();
             log.info("Scheduled manufacturers synchronization completed at {}", LocalDateTime.now());
 
-            syncService.syncParameters();
+            valiSyncService.syncParameters();
             log.info("Scheduled parameters synchronization completed at {}", LocalDateTime.now());
 
-            syncService.syncProducts();
+            valiSyncService.syncProducts();
             log.info("Scheduled products synchronization completed at {}", LocalDateTime.now());
 
         } catch (Exception e) {
@@ -56,16 +59,16 @@ public class CronJobService {
 
         log.info("Starting scheduled Tekra synchronization at {}", LocalDateTime.now());
         try {
-            syncService.syncTekraCategories();
+            tekraSyncService.syncTekraCategories();
             log.info("Scheduled Tekra category synchronization completed at {}", LocalDateTime.now());
 
-            syncService.syncTekraManufacturers();
+            tekraSyncService.syncTekraManufacturers();
             log.info("Scheduled Tekra manufacturers synchronization completed at {}", LocalDateTime.now());
 
-            syncService.syncTekraParameters();
+            tekraSyncService.syncTekraParameters();
             log.info("Scheduled Tekra parameters synchronization completed at {}", LocalDateTime.now());
 
-            syncService.syncTekraProducts();
+            tekraSyncService.syncTekraProducts();
             log.info("Scheduled Tekra products synchronization completed at {}", LocalDateTime.now());
 
         } catch (Exception e) {

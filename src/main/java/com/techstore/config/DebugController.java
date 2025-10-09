@@ -8,7 +8,7 @@ import com.techstore.repository.CategoryRepository;
 import com.techstore.repository.ParameterOptionRepository;
 import com.techstore.repository.ParameterRepository;
 import com.techstore.repository.ProductRepository;
-import com.techstore.service.SyncService;
+import com.techstore.service.sync.ValiSyncService;
 import com.techstore.service.TekraApiService;
 import io.swagger.v3.oas.annotations.Hidden;
 import lombok.RequiredArgsConstructor;
@@ -31,7 +31,7 @@ import java.util.stream.Collectors;
 @RequestMapping("/debug")
 public class DebugController {
 
-    private final SyncService syncService;
+    private final ValiSyncService valiSyncService;
     private final TekraApiService tekraApiService;
     private final CategoryRepository categoryRepository;
     private final ParameterRepository parameterRepository;
@@ -203,12 +203,6 @@ public class DebugController {
                 .forEach(entry -> log.info("  {}: {} products", entry.getKey(), entry.getValue()));
 
         return String.format("Found %d HDD products. Check logs for details.", totalHddProducts);
-    }
-
-    @GetMapping("/admin/debug-category-paths")
-    public String debugPaths() {
-        syncService.debugCategoryPathMatching();
-        return "Check logs";
     }
 
     @GetMapping("/admin/debug-hdd-products")

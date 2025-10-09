@@ -1,6 +1,6 @@
 package com.techstore.controller;
 
-import com.techstore.service.SyncService;
+import com.techstore.service.sync.TekraSyncService;
 import io.swagger.v3.oas.annotations.Hidden;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,13 +19,13 @@ import java.util.Map;
 //@PreAuthorize("hasRole('ADMIN')")
 public class AdminTekraController {
 
-    private final SyncService syncService;
+    private final TekraSyncService tekraSyncService;
 
     @PostMapping(value = "/categories")
     public ResponseEntity<Map<String, Object>> syncCategories() {
         try {
             long startTime = System.currentTimeMillis();
-            syncService.syncTekraCategories();
+            tekraSyncService.syncTekraCategories();
             long duration = System.currentTimeMillis() - startTime;
 
             Map<String, Object> response = Map.of(
@@ -49,7 +49,7 @@ public class AdminTekraController {
     public ResponseEntity<Map<String, Object>> syncManufacturers() {
         try {
             long startTime = System.currentTimeMillis();
-            syncService.syncTekraManufacturers();
+            tekraSyncService.syncTekraManufacturers();
             long duration = System.currentTimeMillis() - startTime;
 
             Map<String, Object> response = Map.of(
@@ -73,7 +73,7 @@ public class AdminTekraController {
     public ResponseEntity<Map<String, Object>> syncParameters() {
         try {
             long startTime = System.currentTimeMillis();
-            syncService.syncTekraParameters();
+            tekraSyncService.syncTekraParameters();
             long duration = System.currentTimeMillis() - startTime;
 
             Map<String, Object> response = Map.of(
@@ -97,7 +97,7 @@ public class AdminTekraController {
     public ResponseEntity<Map<String, Object>> syncProducts() {
         try {
             long startTime = System.currentTimeMillis();
-            syncService.syncTekraProducts();
+            tekraSyncService.syncTekraProducts();
             long duration = System.currentTimeMillis() - startTime;
 
             Map<String, Object> response = Map.of(

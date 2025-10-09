@@ -56,7 +56,7 @@ public class OrderService {
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         // Calculate shipping cost if Speedy is selected
-        BigDecimal shippingCost = calculateShippingCost(request);
+//        BigDecimal shippingCost = calculateShippingCost(request);
 
         // Create order
         Order order = new Order();
@@ -75,6 +75,8 @@ public class OrderService {
         order.setCustomerCompany(request.getCustomerCompany());
         order.setCustomerVatNumber(request.getCustomerVatNumber());
         order.setCustomerVatRegistered(request.getCustomerVatRegistered());
+
+        order.setIsToSpeedyOffice(request.getIsToSpeedyOffice());
 
         // Shipping address
         order.setShippingAddress(request.getShippingAddress());
@@ -105,7 +107,7 @@ public class OrderService {
 
         // Notes and shipping cost
         order.setCustomerNotes(request.getCustomerNotes());
-        order.setShippingCost(shippingCost);
+//        order.setShippingCost(shippingCost);
 
         // Add order items
         for (var itemDto : request.getItems()) {
@@ -461,6 +463,7 @@ public class OrderService {
                 .invoiceDate(order.getInvoiceDate())
                 .createdAt(order.getCreatedAt())
                 .updatedAt(order.getUpdatedAt())
+                .isToSpeedyOffice(order.getIsToSpeedyOffice())
                 .build();
     }
 

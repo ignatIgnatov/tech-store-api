@@ -90,6 +90,9 @@ public class OrderCreateRequestDTO {
         private Integer quantity;
     }
 
+    @NotNull(message = "Payment method is required")
+    private Boolean isToSpeedyOffice = true;
+
     private ShippingMethod shippingMethod;
     private Long shippingSpeedySiteId;
     private Long shippingSpeedyOfficeId;

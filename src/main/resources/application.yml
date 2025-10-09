@@ -151,11 +151,15 @@ app:
         include-stack-trace: false
         include-root-cause: true
         max-error-details: 10
+
     sync:
         enabled: true
         cron: "0 0 3 * * *"
         batch-size: 30
         max-chunk-duration-minutes: 5
+        rate-limit-delay-ms: 1000      # Delay between requests
+        max-retries: 3                  # Max retry attempts for 429 errors
+        cooldown-minutes: 30
 
         tekra:
             enabled: true

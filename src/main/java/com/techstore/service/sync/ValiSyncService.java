@@ -67,16 +67,65 @@ public class ValiSyncService {
     @Value("${app.sync.max-chunk-duration-minutes:5}")
     private int maxChunkDurationMinutes;
 
+    // ===========================================
+    // MANUFACTURERS SYNC
+    // ===========================================
+
+    @Transactional
+    public void syncManufacturers() {
+        String syncType = "MANUFACTURERS";
+        SyncLog syncLog = logHelper.createSyncLogSimple(syncType);
+        long startTime = System.currentTimeMillis();
+
+        try {
+            log.info("Starting manufacturers synchronization");
+
+            List<ManufacturerRequestDto> externalManufacturers = valiApiService.getManufacturers();
+            Map<Long, Manufacturer> existingManufacturers = cachedLookupService.getAllManufacturersMap();
+
+            long created = 0, updated = 0;
+
+            for (ManufacturerRequestDto extManufacturer : externalManufacturers) {
+                Manufacturer manufacturer = existingManufacturers.get(extManufacturer.getId());
+
+                if (manufacturer == null) {
+                    manufacturer = createManufacturerFromExternal(extManufacturer);
+                    manufacturer = manufacturerRepository.save(manufacturer);
+                    existingManufacturers.put(manufacturer.getExternalId(), manufacturer);
+                    created++;
+                } else {
+                    updateManufacturerFromExternal(manufacturer, extManufacturer);
+                    manufacturer = manufacturerRepository.save(manufacturer);
+                    existingManufacturers.put(manufacturer.getExternalId(), manufacturer);
+                    updated++;
+                }
+            }
+
+            logHelper.updateSyncLogSimple(syncLog, LOG_STATUS_SUCCESS,
+                    (long) externalManufacturers.size(), created, updated, 0, null, startTime);
+            log.info("Manufacturers synchronization completed - Created: {}, Updated: {}", created, updated);
+
+        } catch (Exception e) {
+            logHelper.updateSyncLogSimple(syncLog, LOG_STATUS_FAILED, 0, 0, 0, 0, e.getMessage(), startTime);
+            log.error("Error during manufacturers synchronization", e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    // ===========================================
+    // CATEGORIES SYNC
+    // ===========================================
+
     @Transactional
     public void syncCategories() {
-        SyncLog syncLog = logHelper.createSyncLogSimple("CATEGORIES");
+        String syncType = "CATEGORIES";
+        SyncLog syncLog = logHelper.createSyncLogSimple(syncType);
         long startTime = System.currentTimeMillis();
 
         try {
             log.info("Starting categories synchronization");
 
             List<CategoryRequestFromExternalDto> externalCategories = valiApiService.getCategories();
-
             Map<Long, Category> existingCategories = cachedLookupService.getAllCategoriesMap();
 
             long created = 0, updated = 0, skipped = 0;
@@ -102,60 +151,28 @@ public class ValiSyncService {
                 }
             }
 
+            // Update parent relationships after all categories are saved
             updateCategoryParents(externalCategories, existingCategories);
 
-            logHelper.updateSyncLogSimple(syncLog, LOG_STATUS_SUCCESS, externalCategories.size(), created, updated, 0,
-                    skipped > 0 ? String.format("Skipped %d excluded categories", skipped) : null, startTime);
-        } catch (Exception e) {
-            logHelper.updateSyncLogSimple(syncLog, LOG_STATUS_FAILED, 0, 0, 0, 0, e.getMessage(), startTime);
-            throw e;
-        }
-    }
-
-    @Transactional
-    public void syncManufacturers() {
-        SyncLog syncLog = logHelper.createSyncLogSimple("MANUFACTURERS");
-        long startTime = System.currentTimeMillis();
-
-        try {
-            log.info("Starting manufacturers synchronization");
-
-            List<ManufacturerRequestDto> externalManufacturers = valiApiService.getManufacturers();
-            Map<Long, Manufacturer> existingManufacturers = cachedLookupService.getAllManufacturersMap();
-
-            long created = 0, updated = 0;
-
-            for (ManufacturerRequestDto extManufacturer : externalManufacturers) {
-                Manufacturer manufacturer = existingManufacturers.get(extManufacturer.getId());
-
-                if (manufacturer == null) {
-                    manufacturer = createManufacturerFromExternal(extManufacturer);
-                    manufacturer = manufacturerRepository.save(manufacturer);
-                    existingManufacturers.put(manufacturer.getExternalId(), manufacturer);
-                    created++;
-                } else {
-                    updateManufacturerFromExternal(manufacturer, extManufacturer);
-                    manufacturer = manufacturerRepository.save(manufacturer);
-                    existingManufacturers.put(manufacturer.getExternalId(), manufacturer);
-                    updated++;
-                }
-
-                manufacturerRepository.save(manufacturer);
-            }
-
-            logHelper.updateSyncLogSimple(syncLog, LOG_STATUS_SUCCESS, (long) externalManufacturers.size(), created, updated, 0, null, startTime);
-            log.info("Manufacturers synchronization completed - Created: {}, Updated: {}", created, updated);
+            logHelper.updateSyncLogSimple(syncLog, LOG_STATUS_SUCCESS, externalCategories.size(),
+                    created, updated, 0,
+                    skipped > 0 ? String.format("Skipped %d excluded categories", skipped) : null,
+                    startTime);
 
         } catch (Exception e) {
             logHelper.updateSyncLogSimple(syncLog, LOG_STATUS_FAILED, 0, 0, 0, 0, e.getMessage(), startTime);
-            log.error("Error during manufacturers synchronization", e);
-            throw e;
+            throw new RuntimeException(e);
         }
     }
+
+    // ===========================================
+    // PARAMETERS SYNC
+    // ===========================================
 
     @Transactional
     public void syncParameters() {
-        SyncLog syncLog = logHelper.createSyncLogSimple("PARAMETERS");
+        String syncType = "PARAMETERS";
+        SyncLog syncLog = logHelper.createSyncLogSimple(syncType);
         long startTime = System.currentTimeMillis();
 
         try {
@@ -167,9 +184,10 @@ public class ValiSyncService {
             for (Category category : categories) {
                 try {
                     Map<String, Parameter> existingParameters = cachedLookupService.getParametersByCategory(category);
+
                     List<ParameterRequestDto> externalParameters = valiApiService.getParametersByCategory(category.getExternalId());
 
-                    if (externalParameters.isEmpty()) {
+                    if (externalParameters == null || externalParameters.isEmpty()) {
                         log.debug("No parameters found for category: {}", category.getNameBg());
                         continue;
                     }
@@ -234,14 +252,19 @@ public class ValiSyncService {
         } catch (Exception e) {
             logHelper.updateSyncLogSimple(syncLog, LOG_STATUS_FAILED, 0, 0, 0, 0, e.getMessage(), startTime);
             log.error("Error during Vali parameters synchronization", e);
-            throw e;
+            throw new RuntimeException(e);
         }
     }
 
+    // ===========================================
+    // PRODUCTS SYNC
+    // ===========================================
+
     @Transactional
     public void syncProducts() {
+        String syncType = "PRODUCTS";
         log.info("Starting chunked products synchronization");
-        SyncLog syncLog = logHelper.createSyncLogSimple("PRODUCTS");
+        SyncLog syncLog = logHelper.createSyncLogSimple(syncType);
         long startTime = System.currentTimeMillis();
 
         long totalProcessed = 0, created = 0, updated = 0, errors = 0;
@@ -257,6 +280,7 @@ public class ValiSyncService {
                     created += result.created;
                     updated += result.updated;
                     errors += result.errors;
+
                 } catch (Exception e) {
                     log.error("Error processing products for category {}: {}", category.getExternalId(), e.getMessage());
                     errors++;
@@ -270,20 +294,32 @@ public class ValiSyncService {
         } catch (Exception e) {
             logHelper.updateSyncLogSimple(syncLog, LOG_STATUS_FAILED, totalProcessed, created, updated, errors, e.getMessage(), startTime);
             log.error("Error during products synchronization", e);
-            throw e;
+            throw new RuntimeException(e);
         }
     }
+
+    // ===========================================
+    // PARAMETER OPTIONS SYNC
+    // ===========================================
 
     private void syncValiParameterOptions(Parameter parameter, List<ParameterOptionRequestDto> externalOptions) {
         if (externalOptions == null || externalOptions.isEmpty()) {
             return;
         }
 
-        Map<Long, ParameterOption> existingOptions = parameterOptionRepository
+        Map<String, ParameterOption> existingOptions = parameterOptionRepository
                 .findByParameterIdOrderByOrderAsc(parameter.getId())
                 .stream()
-                .filter(option -> option.getExternalId() != null)
-                .collect(Collectors.toMap(ParameterOption::getExternalId, option -> option));
+                .filter(opt -> opt.getNameBg() != null && !opt.getNameBg().isEmpty())
+                .collect(Collectors.toMap(
+                        ParameterOption::getNameBg,
+                        o -> o,
+                        (existing, duplicate) -> {
+                            log.warn("Duplicate parameter option name '{}' for parameter {}, keeping first (IDs: {} and {})",
+                                    existing.getNameBg(), parameter.getNameBg(), existing.getId(), duplicate.getId());
+                            return existing;
+                        }
+                ));
 
         List<ParameterOption> optionsToSave = new ArrayList<>();
         int created = 0, updated = 0;
@@ -353,6 +389,10 @@ public class ValiSyncService {
         }
     }
 
+    // ===========================================
+    // PRODUCT PARAMETERS MAPPING
+    // ===========================================
+
     private void setParametersToProduct(Product product, ProductRequestDto extProduct) {
         if (extProduct.getParameters() == null || product.getCategory() == null) {
             product.setProductParameters(new HashSet<>());
@@ -415,6 +455,9 @@ public class ValiSyncService {
         product.setProductParameters(newProductParameters);
     }
 
+    // ===========================================
+    // CATEGORY HELPERS
+    // ===========================================
 
     private Category createCategoryFromExternal(CategoryRequestFromExternalDto extCategory) {
         Category category = new Category();
@@ -512,18 +555,22 @@ public class ValiSyncService {
     }
 
     private void updateCategoryParents(List<CategoryRequestFromExternalDto> externalCategories, Map<Long, Category> existingCategories) {
+        // Set parent references without saving - Hibernate will handle this on transaction commit
         for (CategoryRequestFromExternalDto extCategory : externalCategories) {
             if (extCategory.getParent() != null && extCategory.getParent() != 0) {
                 Category category = existingCategories.get(extCategory.getId());
                 Category parent = existingCategories.get(extCategory.getParent());
 
-                if (category != null && parent != null) {
+                if (category != null && parent != null && !parent.equals(category)) {
                     category.setParent(parent);
-                    categoryRepository.save(category);
                 }
             }
         }
     }
+
+    // ===========================================
+    // MANUFACTURER HELPERS
+    // ===========================================
 
     private Manufacturer createManufacturerFromExternal(ManufacturerRequestDto extManufacturer) {
         Manufacturer manufacturer = new Manufacturer();
@@ -561,6 +608,10 @@ public class ValiSyncService {
         }
     }
 
+    // ===========================================
+    // PARAMETER HELPERS
+    // ===========================================
+
     private Parameter createParameterFromExternal(ParameterRequestDto extParameter, Category category) {
         Parameter parameter = new Parameter();
         parameter.setExternalId(extParameter.getId());
@@ -594,13 +645,26 @@ public class ValiSyncService {
         }
     }
 
+    // ===========================================
+    // PRODUCT SYNC BY CATEGORY
+    // ===========================================
+
     private CategorySyncResult syncProductsByCategory(Category category) {
         long totalProcessed = 0, created = 0, updated = 0, errors = 0;
 
         try {
             Map<Long, Manufacturer> manufacturersMap = manufacturerRepository.findAll()
                     .stream()
-                    .collect(Collectors.toMap(Manufacturer::getExternalId, m -> m));
+                    .filter(m -> m.getExternalId() != null)
+                    .collect(Collectors.toMap(
+                            Manufacturer::getExternalId,
+                            m -> m,
+                            (existing, duplicate) -> {
+                                log.warn("Duplicate manufacturer externalId: {}, IDs: {} and {}, keeping first",
+                                        existing.getExternalId(), existing.getId(), duplicate.getId());
+                                return existing;
+                            }
+                    ));
 
             List<ProductRequestDto> allProducts = valiApiService.getProductsByCategory(category.getExternalId());
 
@@ -621,7 +685,8 @@ public class ValiSyncService {
                     errors += result.errors;
 
                     if (i < chunks.size() - 1) {
-                        Thread.sleep(200);
+                        entityManager.flush();
+                        entityManager.clear();
                     }
 
                 } catch (Exception e) {
@@ -677,6 +742,10 @@ public class ValiSyncService {
         return new ChunkResult(processed, created, updated, errors);
     }
 
+    // ===========================================
+    // PRODUCT HELPERS
+    // ===========================================
+
     private void createProductFromExternal(ProductRequestDto extProduct, Map<Long, Manufacturer> manufacturersMap) {
         Manufacturer manufacturer = manufacturersMap.get(extProduct.getManufacturerId());
 
@@ -729,9 +798,18 @@ public class ValiSyncService {
     }
 
     private void setCategoryToProduct(Product product, ProductRequestDto extProduct) {
-        if (extProduct.getCategories() != null && !extProduct.getCategories().isEmpty()) {
-            categoryRepository.findByExternalId(extProduct.getCategories().get(0).getId())
-                    .ifPresent(product::setCategory);
+        if (extProduct.getCategories() == null || extProduct.getCategories().isEmpty()) {
+            return;
+        }
+
+        Long categoryId = extProduct.getCategories().get(0).getId();
+        Optional<Category> categoryOpt = categoryRepository.findByExternalId(categoryId);
+
+        if (categoryOpt.isPresent()) {
+            product.setCategory(categoryOpt.get());
+        } else {
+            log.warn("Category with external ID {} not found for product {}",
+                    categoryId, extProduct.getReferenceNumber());
         }
     }
 
@@ -784,6 +862,10 @@ public class ValiSyncService {
         }
     }
 
+    // ===========================================
+    // UTILITY METHODS
+    // ===========================================
+
     private <T> List<List<T>> partitionList(List<T> list, int partitionSize) {
         List<List<T>> partitions = new ArrayList<>();
         for (int i = 0; i < list.size(); i += partitionSize) {
@@ -791,6 +873,10 @@ public class ValiSyncService {
         }
         return partitions;
     }
+
+    // ===========================================
+    // RESULT CLASSES
+    // ===========================================
 
     private static class CategorySyncResult {
         long processed;

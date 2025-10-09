@@ -48,6 +48,8 @@ public class OrderResponseDTO {
     private String shippingPostalCode;
     private String shippingCountry;
 
+    private Boolean isToSpeedyOffice;
+
     private String billingAddress;
     private String billingCity;
     private String billingPostalCode;

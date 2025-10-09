@@ -258,7 +258,6 @@ public class TekraSyncService {
         }
     }
 
-    @Transactional
     public void syncTekraManufacturers() {
         SyncLog syncLog = logHelper.createSyncLogSimple("TEKRA_MANUFACTURERS");
         long startTime = System.currentTimeMillis();
@@ -293,9 +292,19 @@ public class TekraSyncService {
                 return;
             }
 
+            // ✅ FIXED: Added null filter and merge function
             Map<String, Manufacturer> existingManufacturers = manufacturerRepository.findAll()
                     .stream()
-                    .collect(Collectors.toMap(Manufacturer::getName, m -> m));
+                    .filter(m -> m.getName() != null && !m.getName().isEmpty())
+                    .collect(Collectors.toMap(
+                            Manufacturer::getName,
+                            m -> m,
+                            (existing, duplicate) -> {
+                                log.warn("Duplicate manufacturer name: {}, IDs: {} and {}, keeping first",
+                                        existing.getName(), existing.getId(), duplicate.getId());
+                                return existing;
+                            }
+                    ));
 
             long created = 0, updated = 0, errors = 0;
 
@@ -519,10 +528,20 @@ public class TekraSyncService {
                             }
 
                             // Sync options
+                            Parameter finalParameter = parameter;
                             Map<String, ParameterOption> existingOptions = parameterOptionRepository
                                     .findByParameterIdOrderByOrderAsc(parameter.getId())
                                     .stream()
-                                    .collect(Collectors.toMap(ParameterOption::getNameBg, o -> o));
+                                    .filter(opt -> opt.getNameBg() != null && !opt.getNameBg().isEmpty())
+                                    .collect(Collectors.toMap(
+                                            ParameterOption::getNameBg,
+                                            o -> o,
+                                            (existing, duplicate) -> {
+                                                log.warn("Duplicate parameter option name '{}' for parameter {}, keeping first (IDs: {} and {})",
+                                                        existing.getNameBg(), finalParameter.getNameBg(), existing.getId(), duplicate.getId());
+                                                return existing;
+                                            }
+                                    ));
 
                             int orderCounter = existingOptions.size();
                             for (String optionValue : parameterValues) {
@@ -1278,33 +1297,89 @@ public class TekraSyncService {
         final String category2 = "null".equalsIgnoreCase(category2Raw) ? null : category2Raw;
         final String category1 = "null".equalsIgnoreCase(category1Raw) ? null : category1Raw;
 
+        // Build expected category path
         String expectedPath = syncHelper.buildCategoryPath(category1, category2, category3);
 
         if (expectedPath == null) {
-            log.warn("Product {}: Cannot build path (all categories null)", sku);
+            log.warn("✗✗✗ NO PATH: {} | Cannot build path (all categories null)", sku);
             matchTypeStats.put("no_match", matchTypeStats.get("no_match") + 1);
             return null;
         }
 
-        log.debug("Product {}: Expected path '{}'", sku, expectedPath);
+        log.debug("Product {}: Looking for path '{}'", sku, expectedPath);
 
-        // СТРАТЕГИЯ 1: Точно съвпадение на пълния път (работи за L1/L2/L3)
-        Optional<Category> exactMatch = categoryRepository.findAll().stream()
-                .filter(cat -> cat.getCategoryPath() != null)
-                .filter(cat -> expectedPath.equalsIgnoreCase(cat.getCategoryPath()))
-                .findFirst();
+        // ===========================================
+        // STRATEGY 1: Use SyncHelper.findCategoryByPath()
+        // ===========================================
+        Optional<Category> categoryOpt = syncHelper.findCategoryByPath(expectedPath);
 
-        if (exactMatch.isPresent() && isValidCategory(exactMatch.get())) {
-            log.info("✓✓✓ EXACT PATH: {} -> '{}'", sku, exactMatch.get().getNameBg());
+        if (categoryOpt.isPresent() && isValidCategory(categoryOpt.get())) {
+            Category found = categoryOpt.get();
+            log.info("✓✓✓ EXACT PATH: {} → '{}' (path: '{}')",
+                    sku, found.getNameBg(), found.getCategoryPath());
             matchTypeStats.put("perfect_path", matchTypeStats.get("perfect_path") + 1);
-            return exactMatch.get();
+            return found;
         }
 
-        // ✅ СТРАТЕГИЯ 2: Ако няма category_3, търси level-2 категория по ИМЕ на category_2
-        if (category3 == null && category2 != null && category1 != null) {
-            log.debug("Product {}: No category_3, searching for level-2 category by name", sku);
+        // ===========================================
+        // STRATEGY 2: Partial path match (L1 + L2 only)
+        // ===========================================
+        if (category2 != null) {
+            String partialPath = syncHelper.buildCategoryPath(category1, category2, null);
+            categoryOpt = syncHelper.findCategoryByPath(partialPath);
 
-            // Първо търси по точно име
+            if (categoryOpt.isPresent() && isValidCategory(categoryOpt.get())) {
+                Category found = categoryOpt.get();
+                log.info("✓✓ PARTIAL PATH: {} → '{}' (path: '{}') | L3 '{}' not found",
+                        sku, found.getNameBg(), found.getCategoryPath(), category3);
+                matchTypeStats.put("partial_path", matchTypeStats.get("partial_path") + 1);
+                return found;
+            }
+        }
+
+        // ===========================================
+        // STRATEGY 3: L1 only fallback
+        // ===========================================
+        if (category1 != null) {
+            String l1Path = syncHelper.buildCategoryPath(category1, null, null);
+            categoryOpt = syncHelper.findCategoryByPath(l1Path);
+
+            if (categoryOpt.isPresent() && isValidCategory(categoryOpt.get())) {
+                Category found = categoryOpt.get();
+                log.info("✓ L1 FALLBACK: {} → '{}' (path: '{}')",
+                        sku, found.getNameBg(), found.getCategoryPath());
+                matchTypeStats.put("partial_path", matchTypeStats.get("partial_path") + 1);
+                return found;
+            }
+        }
+
+        // ===========================================
+        // STRATEGY 4: Direct database lookup by name + parent
+        // ===========================================
+        if (category3 != null && category2 != null && category1 != null) {
+            // Try to find L3 category by name with proper parent chain
+            Optional<Category> level3Match = categoryRepository.findAll().stream()
+                    .filter(cat -> category3.equalsIgnoreCase(cat.getNameBg()))
+                    .filter(cat -> cat.getParent() != null) // Must have parent (L2)
+                    .filter(cat -> category2.equalsIgnoreCase(cat.getParent().getNameBg()))
+                    .filter(cat -> cat.getParent().getParent() != null) // L2 must have parent (L1)
+                    .filter(cat -> category1.equalsIgnoreCase(cat.getParent().getParent().getNameBg()))
+                    .filter(this::isValidCategory)
+                    .findFirst();
+
+            if (level3Match.isPresent()) {
+                Category found = level3Match.get();
+                log.info("✓✓ NAME MATCH L3: {} → '{}' (parent chain verified)",
+                        sku, found.getNameBg());
+                matchTypeStats.put("name_match", matchTypeStats.get("name_match") + 1);
+                return found;
+            }
+        }
+
+        // ===========================================
+        // STRATEGY 5: L2 by name with parent verification
+        // ===========================================
+        if (category2 != null && category1 != null) {
             Optional<Category> level2Match = categoryRepository.findAll().stream()
                     .filter(cat -> category2.equalsIgnoreCase(cat.getNameBg()))
                     .filter(cat -> cat.getParent() != null)
@@ -1313,133 +1388,38 @@ public class TekraSyncService {
                     .findFirst();
 
             if (level2Match.isPresent()) {
-                log.info("✓✓ LEVEL-2 BY NAME: {} -> '{}' (parent: '{}')",
-                        sku, level2Match.get().getNameBg(), level2Match.get().getParent().getNameBg());
-                matchTypeStats.put("partial_path", matchTypeStats.get("partial_path") + 1);
-                return level2Match.get();
-            }
-
-            // Ако не намери по име, търси по tekraSlug
-            String normalizedCat2 = syncHelper.normalizeCategoryForPath(category2);
-            Optional<Category> level2TekraMatch = categoryRepository.findAll().stream()
-                    .filter(cat -> cat.getTekraSlug() != null)
-                    .filter(cat -> normalizedCat2.equalsIgnoreCase(cat.getTekraSlug()))
-                    .filter(cat -> cat.getParent() != null)
-                    .filter(cat -> category1.equalsIgnoreCase(cat.getParent().getNameBg()))
-                    .filter(this::isValidCategory)
-                    .findFirst();
-
-            if (level2TekraMatch.isPresent()) {
-                log.info("✓✓ LEVEL-2 BY TEKRA SLUG: {} -> '{}' (tekraSlug: '{}')",
-                        sku, level2TekraMatch.get().getNameBg(), level2TekraMatch.get().getTekraSlug());
-                matchTypeStats.put("partial_path", matchTypeStats.get("partial_path") + 1);
-                return level2TekraMatch.get();
+                Category found = level2Match.get();
+                log.info("✓ NAME MATCH L2: {} → '{}' (parent: '{}')",
+                        sku, found.getNameBg(), found.getParent().getNameBg());
+                matchTypeStats.put("name_match", matchTypeStats.get("name_match") + 1);
+                return found;
             }
         }
 
-        // СТРАТЕГИЯ 3: Частично съвпадение (L1+L2) чрез path
-        if (category2 != null) {
-            String partialPath = syncHelper.buildCategoryPath(category1, category2, null);
-
-            Optional<Category> partialMatch = categoryRepository.findAll().stream()
-                    .filter(cat -> cat.getCategoryPath() != null)
-                    .filter(cat -> partialPath.equalsIgnoreCase(cat.getCategoryPath()))
-                    .findFirst();
-
-            if (partialMatch.isPresent() && isValidCategory(partialMatch.get())) {
-                log.info("✓✓ PARTIAL PATH (L1+L2): {} -> '{}' | L3 '{}' not found",
-                        sku, partialMatch.get().getNameBg(), category3);
-                matchTypeStats.put("partial_path", matchTypeStats.get("partial_path") + 1);
-                return partialMatch.get();
-            }
-        }
-
-        // СТРАТЕГИЯ 4: Само L1
+        // ===========================================
+        // STRATEGY 6: L1 by name only
+        // ===========================================
         if (category1 != null) {
-            String l1Path = syncHelper.buildCategoryPath(category1, null, null);
-
-            Optional<Category> l1Match = categoryRepository.findAll().stream()
-                    .filter(cat -> cat.getCategoryPath() != null)
-                    .filter(cat -> l1Path.equalsIgnoreCase(cat.getCategoryPath()))
-                    .findFirst();
-
-            if (l1Match.isPresent() && isValidCategory(l1Match.get())) {
-                log.info("✓ L1 FALLBACK: {} -> '{}'", sku, l1Match.get().getNameBg());
-                matchTypeStats.put("partial_path", matchTypeStats.get("partial_path") + 1);
-                return l1Match.get();
-            }
-        }
-
-        // СТРАТЕГИЯ 5: tekraSlug (за level-3 категории)
-        if (category3 != null) {
-            String normalizedCat3 = syncHelper.normalizeCategoryForPath(category3);
-            Optional<Category> match = categoryRepository.findAll().stream()
-                    .filter(cat -> normalizedCat3.equalsIgnoreCase(cat.getTekraSlug()))
-                    .filter(this::isValidCategory)
-                    .findFirst();
-
-            if (match.isPresent()) {
-                log.info("✓ TEKRA SLUG (L3): {} -> '{}'", sku, match.get().getNameBg());
-                matchTypeStats.put("name_match", matchTypeStats.get("name_match") + 1);
-                return match.get();
-            }
-        }
-
-        if (category2 != null) {
-            String normalizedCat2 = syncHelper.normalizeCategoryForPath(category2);
-            Optional<Category> match = categoryRepository.findAll().stream()
-                    .filter(cat -> normalizedCat2.equalsIgnoreCase(cat.getTekraSlug()))
-                    .filter(this::isValidCategory)
-                    .findFirst();
-
-            if (match.isPresent()) {
-                log.info("✓ TEKRA SLUG (L2): {} -> '{}'", sku, match.get().getNameBg());
-                matchTypeStats.put("name_match", matchTypeStats.get("name_match") + 1);
-                return match.get();
-            }
-        }
-
-        // СТРАТЕГИЯ 6: име (последен fallback)
-        if (category3 != null) {
-            Optional<Category> match = categoryRepository.findAll().stream()
-                    .filter(cat -> category3.equalsIgnoreCase(cat.getNameBg()))
-                    .filter(this::isValidCategory)
-                    .findFirst();
-
-            if (match.isPresent()) {
-                log.info("✓ NAME (L3): {} -> '{}'", sku, match.get().getNameBg());
-                matchTypeStats.put("name_match", matchTypeStats.get("name_match") + 1);
-                return match.get();
-            }
-        }
-
-        if (category2 != null) {
-            Optional<Category> match = categoryRepository.findAll().stream()
-                    .filter(cat -> category2.equalsIgnoreCase(cat.getNameBg()))
-                    .filter(this::isValidCategory)
-                    .findFirst();
-
-            if (match.isPresent()) {
-                log.info("✓ NAME (L2): {} -> '{}'", sku, match.get().getNameBg());
-                matchTypeStats.put("name_match", matchTypeStats.get("name_match") + 1);
-                return match.get();
-            }
-        }
-
-        if (category1 != null) {
-            Optional<Category> match = categoryRepository.findAll().stream()
+            Optional<Category> level1Match = categoryRepository.findAll().stream()
                     .filter(cat -> category1.equalsIgnoreCase(cat.getNameBg()))
+                    .filter(cat -> cat.getParent() == null) // Must be root level
                     .filter(this::isValidCategory)
                     .findFirst();
 
-            if (match.isPresent()) {
-                log.info("✓ NAME (L1): {} -> '{}'", sku, match.get().getNameBg());
+            if (level1Match.isPresent()) {
+                Category found = level1Match.get();
+                log.info("✓ NAME MATCH L1: {} → '{}' (root level)",
+                        sku, found.getNameBg());
                 matchTypeStats.put("name_match", matchTypeStats.get("name_match") + 1);
-                return match.get();
+                return found;
             }
         }
 
-        log.warn("✗✗✗ NO MATCH: {} | Path: '{}'", sku, expectedPath);
+        // ===========================================
+        // NO MATCH FOUND
+        // ===========================================
+        log.warn("✗✗✗ NO MATCH: {} | Path: '{}' | Categories: L1='{}', L2='{}', L3='{}'",
+                sku, expectedPath, category1, category2, category3);
         matchTypeStats.put("no_match", matchTypeStats.get("no_match") + 1);
 
         return null;

@@ -3,17 +3,24 @@ package com.techstore.util;
 import com.techstore.entity.Category;
 import com.techstore.repository.CategoryRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class SyncHelper {
 
     private final CategoryRepository categoryRepository;
+
+    // ===========================================
+    // SLUG GENERATION
+    // ===========================================
 
     public String createSlugFromName(String name) {
         if (name == null || name.isEmpty()) {
@@ -24,6 +31,20 @@ public class SyncHelper {
                 .replaceAll("[^a-z0-9]+", "-")
                 .replaceAll("^-|-$", "");
     }
+
+    public String normalizeCategoryForPath(String categoryName) {
+        if (categoryName == null) return null;
+
+        String transliterated = transliterateCyrillic(categoryName.trim());
+
+        return transliterated.toLowerCase()
+                .replaceAll("[^a-z0-9]+", "-")
+                .replaceAll("^-|-$", "");
+    }
+
+    // ===========================================
+    // SLUG EXISTENCE CHECKS
+    // ===========================================
 
     public boolean slugExistsInMap(String slug, Map<String, Category> existingCategories) {
         return existingCategories.containsKey(slug);
@@ -57,6 +78,96 @@ public class SyncHelper {
 
         return true;
     }
+
+    // ===========================================
+    // CATEGORY LOOKUP BY PATH
+    // ===========================================
+
+    /**
+     * Find category by hierarchical path (e.g., "zahranvaniya-i-baterii/za-postoyanno-naprezhenie")
+     *
+     * @param path The category path with slugs separated by "/"
+     * @return Optional containing the category if found, empty otherwise
+     */
+    public Optional<Category> findCategoryByPath(String path) {
+        if (path == null || path.trim().isEmpty()) {
+            log.debug("Empty path provided");
+            return Optional.empty();
+        }
+
+        String[] slugs = path.split("/");
+
+        if (slugs.length == 0) {
+            log.debug("No slugs found in path: {}", path);
+            return Optional.empty();
+        }
+
+        // Start with root level categories
+        Category currentCategory = null;
+
+        for (int i = 0; i < slugs.length; i++) {
+            String slug = slugs[i].trim();
+
+            if (slug.isEmpty()) {
+                continue;
+            }
+
+            // Find category with this slug that has the current category as parent
+            Category finalCurrentCategory = currentCategory;
+            Optional<Category> foundCategory = categoryRepository.findAll().stream()
+                    .filter(cat -> slug.equals(cat.getSlug()))
+                    .filter(cat -> {
+                        if (finalCurrentCategory == null) {
+                            // Looking for root level category (no parent)
+                            return cat.getParent() == null;
+                        } else {
+                            // Looking for subcategory
+                            return cat.getParent() != null &&
+                                    cat.getParent().getId().equals(finalCurrentCategory.getId());
+                        }
+                    })
+                    .findFirst();
+
+            if (foundCategory.isEmpty()) {
+                log.warn("Category not found at level {} for slug '{}' in path '{}' (parent: {})",
+                        i + 1, slug, path,
+                        finalCurrentCategory != null ? finalCurrentCategory.getSlug() : "root");
+                return Optional.empty();
+            }
+
+            currentCategory = foundCategory.get();
+        }
+
+        if (currentCategory != null) {
+            log.debug("Successfully found category '{}' (ID: {}) for path '{}'",
+                    currentCategory.getNameBg(), currentCategory.getId(), path);
+        }
+
+        return Optional.ofNullable(currentCategory);
+    }
+
+    /**
+     * Build category path from multiple category names
+     */
+    public String buildCategoryPath(String category1, String category2, String category3) {
+        List<String> parts = new ArrayList<>();
+
+        if (category1 != null) {
+            parts.add(normalizeCategoryForPath(category1));
+        }
+        if (category2 != null) {
+            parts.add(normalizeCategoryForPath(category2));
+        }
+        if (category3 != null) {
+            parts.add(normalizeCategoryForPath(category3));
+        }
+
+        return parts.isEmpty() ? null : String.join("/", parts);
+    }
+
+    // ===========================================
+    // DISCRIMINATOR EXTRACTION
+    // ===========================================
 
     public String extractDiscriminator(String categoryName) {
         if (categoryName == null || categoryName.isEmpty()) {
@@ -97,6 +208,10 @@ public class SyncHelper {
         return null;
     }
 
+    // ===========================================
+    // TRANSLITERATION
+    // ===========================================
+
     public String transliterateCyrillic(String text) {
         if (text == null) return "";
 
@@ -128,31 +243,5 @@ public class SyncHelper {
             result.append(transliterationMap.getOrDefault(c, String.valueOf(c)));
         }
         return result.toString();
-    }
-
-    public String buildCategoryPath(String category1, String category2, String category3) {
-        List<String> parts = new ArrayList<>();
-
-        if (category1 != null) {
-            parts.add(normalizeCategoryForPath(category1));
-        }
-        if (category2 != null) {
-            parts.add(normalizeCategoryForPath(category2));
-        }
-        if (category3 != null) {
-            parts.add(normalizeCategoryForPath(category3));
-        }
-
-        return parts.isEmpty() ? null : String.join("/", parts);
-    }
-
-    public String normalizeCategoryForPath(String categoryName) {
-        if (categoryName == null) return null;
-
-        String transliterated = transliterateCyrillic(categoryName.trim());
-
-        return transliterated.toLowerCase()
-                .replaceAll("[^a-z0-9]+", "-")
-                .replaceAll("^-|-$", "");
     }
 }

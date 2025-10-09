@@ -142,6 +142,8 @@ public class Order extends BaseEntity {
     private String shippingSpeedySiteName;
     private String shippingSpeedyOfficeName;
 
+    private Boolean isToSpeedyOffice;
+
     // Helper методи
     public void calculateTotals() {
         this.subtotal = orderItems.stream()
@@ -152,7 +154,7 @@ public class Order extends BaseEntity {
 
         this.total = this.subtotal
                 .add(this.taxAmount)
-                .add(this.shippingCost)
+//                .add(this.shippingCost)
                 .subtract(this.discountAmount != null ? this.discountAmount : BigDecimal.ZERO);
     }
 

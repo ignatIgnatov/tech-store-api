@@ -2,6 +2,7 @@ package com.techstore.service;
 
 import com.techstore.dto.request.OrderCreateRequestDTO;
 import com.techstore.dto.request.OrderStatusUpdateDTO;
+import com.techstore.dto.request.UserRequestDTO;
 import com.techstore.dto.response.OrderItemResponseDTO;
 import com.techstore.dto.response.OrderResponseDTO;
 import com.techstore.dto.speedy.SpeedyCalculatePriceResponse;
@@ -43,6 +44,7 @@ public class OrderService {
     private final UserRepository userRepository;
     private final CartItemRepository cartItemRepository;
     private final SpeedyService speedyService;
+    private final UserService userService;
 
     /**
      * Creates a new order
@@ -51,9 +53,12 @@ public class OrderService {
     public OrderResponseDTO createOrder(OrderCreateRequestDTO request, Long userId) {
         log.info("Creating order for user: {}", userId);
 
-        // Find user
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        if (request.getPassword() != null && request.getConfirmPassword() != null) {
+            UserRequestDTO userRequestDTO = getUserRequestDTO(request);
+            userService.createUser(userRequestDTO);
+        }
+
+        User user = userRepository.findById(userId).orElse(null);
 
         // Calculate shipping cost if Speedy is selected
 //        BigDecimal shippingCost = calculateShippingCost(request);
@@ -482,6 +487,18 @@ public class OrderService {
                 .lineTax(item.getLineTax())
                 .discountAmount(item.getDiscountAmount())
                 .build();
+    }
+
+    private static UserRequestDTO getUserRequestDTO(OrderCreateRequestDTO request) {
+        UserRequestDTO userRequestDTO = new UserRequestDTO();
+        userRequestDTO.setFirstName(request.getCustomerFirstName());
+        userRequestDTO.setLastName(request.getCustomerLastName());
+        userRequestDTO.setPhone(request.getCustomerPhone());
+        userRequestDTO.setEmail(request.getCustomerEmail());
+        userRequestDTO.setRole(String.valueOf(User.Role.USER));
+        userRequestDTO.setUsername(request.getCustomerFirstName());
+        userRequestDTO.setActive(true);
+        return userRequestDTO;
     }
 
     /**

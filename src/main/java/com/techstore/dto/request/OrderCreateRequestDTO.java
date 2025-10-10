@@ -98,4 +98,7 @@ public class OrderCreateRequestDTO {
     private Long shippingSpeedyOfficeId;
     private String shippingSpeedySiteName;
     private String shippingSpeedyOfficeName;
+
+    private String password;
+    private String confirmPassword;
 }

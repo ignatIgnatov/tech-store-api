@@ -88,7 +88,7 @@ public class UserService {
 
             // Create user
             User user = createUserFromRequest(requestDTO);
-            user = userRepository.save(user);
+
 
             log.info("User created successfully with id: {} and username: {}",
                     user.getId(), user.getUsername());
@@ -404,8 +404,8 @@ public class UserService {
         user.setLastName(StringUtils.hasText(requestDTO.getLastName()) ? requestDTO.getLastName().trim() : null);
         user.setRole(User.Role.valueOf(requestDTO.getRole().toUpperCase()));
         user.setActive(requestDTO.getActive() != null ? requestDTO.getActive() : true);
-        user.setEmailVerified(false); // New users must verify email
-
+        user.setEmailVerified(true); // New users must verify email
+        user = userRepository.save(user);
         return user;
     }
 

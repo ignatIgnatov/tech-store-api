@@ -23,7 +23,7 @@ public class Order extends BaseEntity {
     private String orderNumber; // Уникален номер на поръчката (напр. ORD-2025-00001)
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
+    @JoinColumn(name = "user_id", nullable = true)
     private User user;
 
     @Enumerated(EnumType.STRING)

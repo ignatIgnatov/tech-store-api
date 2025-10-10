@@ -50,15 +50,14 @@ public class OrderService {
      * Creates a new order
      */
     @Transactional
-    public OrderResponseDTO createOrder(OrderCreateRequestDTO request, Long userId) {
-        log.info("Creating order for user: {}", userId);
+    public OrderResponseDTO createOrder(OrderCreateRequestDTO request) {
 
         if (request.getPassword() != null && request.getConfirmPassword() != null) {
             UserRequestDTO userRequestDTO = getUserRequestDTO(request);
             userService.createUser(userRequestDTO);
         }
 
-        User user = userRepository.findById(userId).orElse(null);
+        User user = userRepository.findByEmail(request.getCustomerEmail()).orElse(null);
 
         // Calculate shipping cost if Speedy is selected
 //        BigDecimal shippingCost = calculateShippingCost(request);
@@ -139,7 +138,7 @@ public class OrderService {
         order = orderRepository.save(order);
 
         // Clear user's cart
-        cartItemRepository.deleteByUserId(userId);
+        cartItemRepository.deleteByUserEmail(request.getCustomerEmail());
 
         log.info("Order created successfully: {}", order.getOrderNumber());
 
@@ -149,17 +148,17 @@ public class OrderService {
     /**
      * Creates order with Speedy shipping calculation
      */
-    @Transactional
-    public OrderResponseDTO createOrderWithSpeedy(OrderCreateRequestDTO request, Long userId) {
-        log.info("Creating order with Speedy shipping for user: {}", userId);
-
-        // Validate Speedy data
-        if (request.getShippingMethod() == ShippingMethod.SPEEDY && request.getShippingSpeedySiteId() == null) {
-            throw new IllegalArgumentException("Speedy site ID is required for Speedy shipping");
-        }
-
-        return createOrder(request, userId);
-    }
+//    @Transactional
+//    public OrderResponseDTO createOrderWithSpeedy(OrderCreateRequestDTO request, Long userId) {
+//        log.info("Creating order with Speedy shipping for user: {}", userId);
+//
+//        // Validate Speedy data
+//        if (request.getShippingMethod() == ShippingMethod.SPEEDY && request.getShippingSpeedySiteId() == null) {
+//            throw new IllegalArgumentException("Speedy site ID is required for Speedy shipping");
+//        }
+//
+//        return createOrder(request);
+//    }
 
     /**
      * Calculate shipping cost based on shipping method

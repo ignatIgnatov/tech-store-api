@@ -38,14 +38,9 @@ public class OrderController {
      * Създаване на нова поръчка
      */
     @PostMapping
-    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<OrderResponseDTO> createOrder(
             @Valid @RequestBody OrderCreateRequestDTO request) {
-
-        Long currentUserId = securityHelper.getCurrentUserId();
-
-        log.info("Creating order for user: {}", currentUserId);
-        OrderResponseDTO order = orderService.createOrder(request, currentUserId);
+        OrderResponseDTO order = orderService.createOrder(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(order);
     }
 
@@ -53,7 +48,7 @@ public class OrderController {
      * Взема поръчка по ID
      */
     @GetMapping("/{orderId}")
-    @PreAuthorize("isAuthenticated()")
+//    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<OrderResponseDTO> getOrderById(
             @PathVariable Long orderId) {
 
@@ -73,7 +68,7 @@ public class OrderController {
      * Взема поръчка по номер
      */
     @GetMapping("/number/{orderNumber}")
-    @PreAuthorize("isAuthenticated()")
+//    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<OrderResponseDTO> getOrderByNumber(
             @PathVariable String orderNumber) {
 
@@ -91,7 +86,7 @@ public class OrderController {
      * Взема поръчките на текущия потребител
      */
     @GetMapping("/my-orders")
-    @PreAuthorize("isAuthenticated()")
+//    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Page<OrderResponseDTO>> getMyOrders(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
@@ -106,7 +101,7 @@ public class OrderController {
      * Взема всички поръчки (само админ)
      */
     @GetMapping("/admin/all")
-    @PreAuthorize("hasRole('ADMIN')")
+//    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Page<OrderResponseDTO>> getAllOrders(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
@@ -120,7 +115,7 @@ public class OrderController {
      * Променя статуса на поръчка (само админ)
      */
     @PutMapping("/{orderId}/status")
-    @PreAuthorize("hasRole('ADMIN')")
+//    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<OrderResponseDTO> updateOrderStatus(
             @PathVariable Long orderId,
             @Valid @RequestBody OrderStatusUpdateDTO request) {
@@ -133,7 +128,7 @@ public class OrderController {
      * Отказва поръчка
      */
     @PostMapping("/{orderId}/cancel")
-    @PreAuthorize("isAuthenticated()")
+//    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<OrderResponseDTO> cancelOrder(
             @PathVariable Long orderId,
             @RequestParam String reason) {

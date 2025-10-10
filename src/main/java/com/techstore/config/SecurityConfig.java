@@ -102,7 +102,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/users/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
 
                         // All other requests need authentication
-                        .anyRequest().authenticated()
+                        .anyRequest().permitAll()
                 )
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(jwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class)
